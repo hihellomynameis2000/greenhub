@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabaseClient() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error("Missing Supabase env vars");
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey);
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
+    const supabase = getSupabaseClient();
 
     // 1. Save to Supabase
     const { error } = await supabase
@@ -24,7 +32,15 @@ export async function POST(req: Request) {
     }
 
     // 2. Send to Salesforce (example webhook or API endpoint)
-    await fetch(process.env.SALESFORCE_WEBHOOK_URL!, {
+    const salesforceWebhookUrl = process.env.SALESFORCE_WEBHOOK_URL;
+    if (!salesforceWebhookUrl) {
+      return NextResponse.json(
+        { error: "Missing Salesforce webhook URL" },
+        { status: 500 }
+      );
+    }
+
+    await fetch(salesforceWebhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
