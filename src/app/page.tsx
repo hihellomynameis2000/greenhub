@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useMemo, useState } from "react";
 
 type ClassValue = string | false | null | undefined;
@@ -588,6 +589,16 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
         <div className="mb-8">
           <div className="flex items-start justify-between gap-6">
             <div>
+              <div className="mb-3">
+                <Image
+                  src="/images/logo.png"
+                  alt="Greenhub"
+                  width={160}
+                  height={40}
+                  className="h-8 w-auto"
+                  priority
+                />
+              </div>
               <div className="text-2xl font-semibold tracking-tight text-slate-900">
                 {headerTitle}
               </div>
@@ -827,10 +838,10 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
           {steps[step].key === "contact" ? (
             <Section title="Primary contact" subtitle="Who should we follow up with?">
               <Field label="First Name" required error={touched.firstName ? errors.firstName : ""}>
-                <Input value={data.firstName} onChange={(v) => update({ firstName: v })} placeholder="Nik" autoComplete="given-name" />
+                <Input value={data.firstName} onChange={(v) => update({ firstName: v })} placeholder="John" autoComplete="given-name" />
               </Field>
               <Field label="Last Name" required error={touched.lastName ? errors.lastName : ""}>
-                <Input value={data.lastName} onChange={(v) => update({ lastName: v })} placeholder="Vorobyev" autoComplete="family-name" />
+                <Input value={data.lastName} onChange={(v) => update({ lastName: v })} placeholder="Doe" autoComplete="family-name" />
               </Field>
               <Field label="Title">
                 <Input value={data.title} onChange={(v) => update({ title: v })} placeholder="Owner / Founder" />
@@ -947,14 +958,6 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                   </div>
                 </div>
 
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  <div className="font-medium text-slate-900">What happens next</div>
-                  <ul className="mt-2 list-disc space-y-1 pl-5">
-                    <li>In production, you’d POST this payload to your API.</li>
-                    <li>Your backend creates a Salesforce Lead and auto-assigns a rep.</li>
-                    <li>Rep follows up with a processing review + next steps.</li>
-                  </ul>
-                </div>
               </div>
             </div>
           ) : null}
