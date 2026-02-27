@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   title: "Greenhub New Merchant Application",
   description: "Greenhub merchant application form",
   icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
+    icon: "/images/logo.png",
+    apple: "/images/logo.png",
   },
 };
 

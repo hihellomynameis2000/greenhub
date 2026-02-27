@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type ClassValue = string | false | null | undefined;
 
@@ -101,6 +101,8 @@ type ReviewRowProps = {
   k: React.ReactNode;
   v: React.ReactNode;
 };
+
+type SubmitStage = "idle" | "submitting" | "success";
 
 // Minimal, Stripe-ish multi-step form preview
 // - White background
@@ -371,6 +373,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
 
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [submitStage, setSubmitStage] = useState<SubmitStage>("idle");
   const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
 
   const [data, setData] = useState<FormData>({
@@ -434,6 +437,16 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
   function update(patch: Partial<FormData>) {
     setData((d) => ({ ...d, ...patch }));
   }
+
+  useEffect(() => {
+    if (submitStage !== "success") return;
+    const timer = setTimeout(() => {
+      if (typeof window !== "undefined") {
+        window.location.assign("https://greenhub.io");
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [submitStage]);
 
   const acceptanceTotal =
     (parseInt(data.internetPct || "0", 10) || 0) +
@@ -556,7 +569,9 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
 
   async function submit() {
     try {
+      const startedAt = Date.now();
       setSubmitting(true);
+      setSubmitStage("submitting");
 
       const res = await fetch("/api/lead", {
         method: "POST",
@@ -570,11 +585,15 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
         throw new Error("Submission failed");
       }
 
-      alert("Application submitted successfully. A representative will follow up shortly.");
-
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < 1000) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 - elapsed));
+      }
+      setSubmitStage("success");
     } catch (err) {
       console.error(err);
       alert("There was an error submitting the application. Please try again.");
+      setSubmitStage("idle");
     } finally {
       setSubmitting(false);
     }
@@ -585,6 +604,31 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
 
   return (
     <div className="min-h-screen bg-white">
+      {submitStage !== "idle" ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          {submitStage === "submitting" ? (
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+              <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+              <div className="text-lg font-semibold text-slate-900">Submitting</div>
+              <div className="mt-1 text-sm text-slate-600">
+                Your information is being submitted.
+              </div>
+            </div>
+          ) : (
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                <span className="text-xl font-semibold">✓</span>
+              </div>
+              <div className="text-lg font-semibold text-slate-900">
+                Thank you for your application
+              </div>
+              <div className="mt-1 text-sm text-slate-600">
+                We're redirecting you to greenhub.io
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
       <div className="mx-auto max-w-4xl px-4 py-10">
         <div className="mb-8">
           <div className="flex items-start justify-between gap-6">
@@ -970,7 +1014,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                 onClick={back}
                 disabled={step === 0}
                 className={cx(
-                  "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium shadow-sm transition",
+                  "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium shadow-sm transition cursor-pointer",
                   step === 0
                     ? "cursor-not-allowed border-slate-200 bg-white text-slate-300"
                     : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -984,7 +1028,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                   type="button"
                   onClick={next}
                   className={cx(
-                    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition",
+                    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition cursor-pointer",
                     GREEN,
                     GREEN_HOVER
                   )}
@@ -1032,7 +1076,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                     submit();
                   }}
                   className={cx(
-                    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition",
+                    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-70",
                     GREEN,
                     GREEN_HOVER
                   )}
