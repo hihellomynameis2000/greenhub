@@ -477,11 +477,6 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
     if (!data.legalState) e.legalState = "Required";
     if (!data.legalZip.trim()) e.legalZip = "Required";
 
-    if (!data.locAddr1.trim()) e.locAddr1 = "Required";
-    if (!data.locCity.trim()) e.locCity = "Required";
-    if (!data.locState) e.locState = "Required";
-    if (!data.locZip.trim()) e.locZip = "Required";
-
     if (data.separateMailing) {
       if (!data.mailAddr1.trim()) e.mailAddr1 = "Required";
       if (!data.mailCity.trim()) e.mailCity = "Required";
@@ -526,10 +521,6 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
           "legalCity",
           "legalState",
           "legalZip",
-          "locAddr1",
-          "locCity",
-          "locState",
-          "locZip",
         ];
         if (data.separateMailing) base.push("mailAddr1", "mailCity", "mailState", "mailZip");
         return base;
@@ -816,7 +807,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
 
               <Section title="Business location address" subtitle="Where business operates (if different).">
                 <div className="md:col-span-2">
-                  <Field label="Address" required error={touched.locAddr1 ? errors.locAddr1 : ""}>
+                  <Field label="Address">
                     <Input value={data.locAddr1} onChange={(v) => update({ locAddr1: v })} placeholder="123 Main St" />
                   </Field>
                 </div>
@@ -825,13 +816,13 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                     <Input value={data.locAddr2} onChange={(v) => update({ locAddr2: v })} placeholder="Suite / Unit" />
                   </Field>
                 </div>
-                <Field label="City" required error={touched.locCity ? errors.locCity : ""}>
+                <Field label="City">
                   <Input value={data.locCity} onChange={(v) => update({ locCity: v })} placeholder="Miami" />
                 </Field>
-                <Field label="State" required error={touched.locState ? errors.locState : ""}>
+                <Field label="State">
                   <Select value={data.locState} onChange={(v) => update({ locState: v })} options={STATES} placeholder="Select…" />
                 </Field>
-                <Field label="Zip" required error={touched.locZip ? errors.locZip : ""}>
+                <Field label="Zip">
                   <Input value={data.locZip} onChange={(v) => update({ locZip: v })} placeholder="33101" />
                 </Field>
 
@@ -1056,10 +1047,6 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                       "legalCity",
                       "legalState",
                       "legalZip",
-                      "locAddr1",
-                      "locCity",
-                      "locState",
-                      "locZip",
                       "firstName",
                       "lastName",
                       "phone",
