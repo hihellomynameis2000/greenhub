@@ -47,6 +47,8 @@ type FormData = {
   retailPct: string;
   keyedPct: string;
   notes: string;
+  fileUrl: string;
+  fileName: string;
 };
 
 type FieldKey = keyof FormData | "acceptance";
@@ -432,10 +434,38 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
 
     // Section 9
     notes: "",
+    fileUrl: "",
+    fileName: "",
   });
 
   function update(patch: Partial<FormData>) {
     setData((d) => ({ ...d, ...patch }));
+  }
+
+  async function handleFile(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const payload = (await res.json()) as { url?: string };
+      if (!payload.url) {
+        throw new Error("No URL returned");
+      }
+
+      update({ fileUrl: payload.url, fileName: file.name });
+    } catch (err) {
+      console.error(err);
+      alert("File upload failed.");
+    }
   }
 
   useEffect(() => {
@@ -943,6 +973,43 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                 <div className="text-lg font-semibold text-slate-900">Notes</div>
                 <div className="mt-1 text-sm text-slate-600">Anything we should know (processing history, approvals, special requirements)?</div>
               </div>
+              <div className="mb-5">
+                <div className="mb-2 text-sm font-medium text-slate-900">
+                  Attach supporting documents (optional)
+                </div>
+
+                <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-emerald-500 hover:bg-emerald-50">
+                  <div className="text-sm font-medium text-slate-700">
+                    Click to upload or drag & drop
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    PDF, JPG, PNG
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        handleFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+                </label>
+
+                {data.fileUrl && (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-xs text-emerald-700">
+                      File uploaded successfully.
+                    </div>
+                    {data.fileName ? (
+                      <div className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                        {data.fileName}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
               <textarea
                 value={data.notes}
                 onChange={(e) => update({ notes: e.target.value })}
@@ -985,6 +1052,14 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                   <ReviewRow k="V/MC/Disc" v={data.vmdMonthly ? `$${data.vmdMonthly}` : "—"} />
                   <ReviewRow k="Amex" v={data.amexMonthly ? `$${data.amexMonthly}` : "—"} />
                   <ReviewRow k="Acceptance" v={`${acceptanceTotal}% (Internet ${data.internetPct || 0} / Retail ${data.retailPct || 0} / Keyed ${data.keyedPct || 0})`} />
+                  <div className="md:col-span-2">
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <div className="text-xs font-medium text-slate-500">Document(s)</div>
+                      <div className="mt-1 text-sm font-medium text-slate-900">
+                        {data.fileName || "—"}
+                      </div>
+                    </div>
+                  </div>
                   <div className="md:col-span-2">
                     <div className="rounded-xl border border-slate-200 p-4">
                       <div className="text-xs font-medium text-slate-500">Notes</div>
