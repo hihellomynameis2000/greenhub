@@ -373,7 +373,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
     []
   );
 
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(steps.length - 1);
   const [submitting, setSubmitting] = useState(false);
   const [submitStage, setSubmitStage] = useState<SubmitStage>("idle");
   const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});

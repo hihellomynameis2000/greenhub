@@ -38,7 +38,87 @@ type LeadPayload = {
   retailPct?: string | number;
   keyedPct?: string | number;
   notes?: string;
+  fileUrl?: string;
 };
+
+const SALESFORCE_WEBTOLEAD_URL =
+  "https://webto.salesforce.com/servlet/servlet.WebToLead?encoding=UTF-8";
+
+function buildSalesforceDescription(body: LeadPayload): string {
+  const parts = [
+    toText(body.notes) ? `Notes: ${toText(body.notes)}` : "",
+    toText(body.fileUrl) ? `Supporting Document URL: ${toText(body.fileUrl)}` : "",
+    toText(body.dbaName) ? `DBA / Merchant Name: ${toText(body.dbaName)}` : "",
+    toText(body.legalAddr2) ? `Legal Business Address 2: ${toText(body.legalAddr2)}` : "",
+    toText(body.locAddr1) ? `Business Location Address 1: ${toText(body.locAddr1)}` : "",
+    toText(body.locAddr2) ? `Business Location Address 2: ${toText(body.locAddr2)}` : "",
+    toText(body.locCity) ? `Business Location City: ${toText(body.locCity)}` : "",
+    toText(body.locState) ? `Business Location State: ${toText(body.locState)}` : "",
+    toText(body.locZip) ? `Business Location ZIP: ${toText(body.locZip)}` : "",
+    toText(body.mailAddr1) ? `Mailing Address 1: ${toText(body.mailAddr1)}` : "",
+    toText(body.mailAddr2) ? `Mailing Address 2: ${toText(body.mailAddr2)}` : "",
+    toText(body.mailCity) ? `Mailing City: ${toText(body.mailCity)}` : "",
+    toText(body.mailState) ? `Mailing State: ${toText(body.mailState)}` : "",
+    toText(body.mailZip) ? `Mailing ZIP: ${toText(body.mailZip)}` : "",
+  ].filter(Boolean);
+
+  return parts.join("\n");
+}
+
+function toSalesforcePayload(body: LeadPayload) {
+  const description = buildSalesforceDescription(body);
+
+  return {
+    oid: "00DHn000002T2Ez",
+    retURL: "https://www.greenhub.io/",
+
+    first_name: toText(body.firstName) ?? "",
+    last_name: toText(body.lastName) ?? "",
+    title: toText(body.title) ?? "",
+    phone: toText(body.phone) ?? "",
+    email: toText(body.email) ?? "",
+
+    company: toText(body.dbaName) ?? toText(body.legalName) ?? "",
+    Legal_Business_Name__c: toText(body.legalName) ?? "",
+    Corp_Structure__c: toText(body.corpStructure) ?? "",
+    industry: toText(body.industry) ?? "",
+    Website_URL__c: toText(body.websiteUrl) ?? "",
+
+    Visa_Mastercard_Discover_Monthly_Volume__c:
+      body.vmdMonthly != null ? String(body.vmdMonthly) : "",
+    American_Express_Monthly_Volume__c:
+      body.amexMonthly != null ? String(body.amexMonthly) : "",
+    Internet__c: body.internetPct != null ? String(body.internetPct) : "",
+    Retail_Swiped__c: body.retailPct != null ? String(body.retailPct) : "",
+    Keyed_MO_TO__c: body.keyedPct != null ? String(body.keyedPct) : "",
+
+    Ecomm_Platform__c: toText(body.ecommercePlatform) ?? "",
+    Gateway__c: toText(body.gateway) ?? "",
+    Log_In__c: toText(body.websiteLogin) ?? "",
+    Password__c: toText(body.websitePassword) ?? "",
+
+    street: toText(body.legalAddr1) ?? "",
+    city: toText(body.legalCity) ?? "",
+    state: toText(body.legalState) ?? "",
+    zip: toText(body.legalZip) ?? "",
+    country: "",
+    Legal_Business_Address_2__c: toText(body.legalAddr2) ?? "",
+
+    Business_Location_Address__Street__s: toText(body.locAddr1) ?? "",
+    Business_Location_Address__City__s: toText(body.locCity) ?? "",
+    Business_Location_Address__PostalCode__s: toText(body.locZip) ?? "",
+    Business_Location_Address_2__c: toText(body.locAddr2) ?? "",
+
+    Mailing_Address__Street__s: toText(body.mailAddr1) ?? "",
+    Mailing_Address__City__s: toText(body.mailCity) ?? "",
+    Mailing_Address__StateCode__s: toText(body.mailState) ?? "",
+    Mailing_Address__PostalCode__s: toText(body.mailZip) ?? "",
+    Mailing_Address__CountryCode__s: "",
+    Mailing_Address_2__c: toText(body.mailAddr2) ?? "",
+
+    description,
+  };
+}
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -127,6 +207,7 @@ export async function POST(req: Request) {
         retail_pct: toInt(body.retailPct),
         keyed_pct: toInt(body.keyedPct),
         notes: toText(body.notes),
+        file_url: toText(body.fileUrl),
         data: body,
         created_at: new Date().toISOString(),
       });
@@ -136,30 +217,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Database error" }, { status: 500 });
     }
 
-    // 2. Send to Salesforce (example webhook or API endpoint)
-    const salesforceWebhookUrl = process.env.SALESFORCE_WEBHOOK_URL;
+    // 2. Send to Salesforce Web-to-Lead
     let salesforceOk = true;
-    if (!salesforceWebhookUrl) {
-      salesforceOk = false;
-      console.warn("Missing Salesforce webhook URL");
-    } else {
-      try {
-        const sfRes = await fetch(salesforceWebhookUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-        });
+    try {
+      const sfPayload = toSalesforcePayload(body);
+      const params = new URLSearchParams();
 
-        if (!sfRes.ok) {
-          salesforceOk = false;
-          console.error("Salesforce webhook failed", sfRes.status);
-        }
-      } catch (sfErr) {
+      Object.entries(sfPayload).forEach(([key, value]) => {
+        params.append(key, String(value ?? ""));
+      });
+
+      const sfRes = await fetch(SALESFORCE_WEBTOLEAD_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+        redirect: "follow",
+      });
+
+      if (!sfRes.ok) {
         salesforceOk = false;
-        console.error("Salesforce webhook error", sfErr);
+        const text = await sfRes.text();
+        console.error("Salesforce Web-to-Lead failed", sfRes.status, text);
       }
+    } catch (sfErr) {
+      salesforceOk = false;
+      console.error("Salesforce Web-to-Lead error", sfErr);
     }
 
     return NextResponse.json({ success: true, salesforceOk });
