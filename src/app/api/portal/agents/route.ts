@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   decimalValue,
-  optionalString,
   portalErrorResponse,
   requirePortalContext,
   requiredString,
@@ -134,6 +133,100 @@ export async function PATCH(request: NextRequest) {
 
     await writeAuditLog(context, "agent.updated", "agent_profiles", id, updates);
     return NextResponse.json({ agent });
+  } catch (error) {
+    return portalErrorResponse(error);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const context = await requirePortalContext(request, "admin");
+    const body = await request.json();
+    const id = requiredString(body.id, "Agent ID");
+
+    if (id === context.profile.id) {
+      return NextResponse.json(
+        { error: "You cannot delete your own administrator profile." },
+        { status: 400 }
+      );
+    }
+
+    const agentQuery = new URLSearchParams({
+      select: "id,auth_user_id,name,email,role,status,commission_rate,created_at,updated_at",
+      id: `eq.${id}`,
+      limit: "1",
+    });
+    const existingAgents = await supabaseRest<AgentProfile[]>("agent_profiles", {
+      query: agentQuery,
+    });
+    const agent = existingAgents[0];
+
+    if (!agent) {
+      return NextResponse.json({ error: "Agent not found." }, { status: 404 });
+    }
+
+    if (agent.role === "admin" && agent.status === "active") {
+      const activeAdminQuery = new URLSearchParams({
+        select: "id",
+        role: "eq.admin",
+        status: "eq.active",
+      });
+      const activeAdmins = await supabaseRest<{ id: string }[]>("agent_profiles", {
+        query: activeAdminQuery,
+      });
+
+      if (activeAdmins.length <= 1) {
+        return NextResponse.json(
+          { error: "At least one active administrator must remain in the portal." },
+          { status: 400 }
+        );
+      }
+    }
+
+    const relationshipQueries = [
+      ["residual_merchant_accounts", "assigned_agent_id"],
+      ["monthly_residuals", "agent_id"],
+      ["residual_notifications", "agent_id"],
+    ] as const;
+    const relationships = await Promise.all(
+      relationshipQueries.map(([table, column]) =>
+        supabaseRest<{ id: string }[]>(table, {
+          query: new URLSearchParams({
+            select: "id",
+            [column]: `eq.${id}`,
+            limit: "1",
+          }),
+        })
+      )
+    );
+
+    if (relationships.some((records) => records.length > 0)) {
+      return NextResponse.json(
+        {
+          error:
+            "This agent has assigned accounts, residuals, or notifications. Set the profile to inactive instead to preserve reporting history.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const deletedAgents = await supabaseRest<AgentProfile[]>("agent_profiles", {
+      method: "DELETE",
+      prefer: "return=representation",
+      query: new URLSearchParams({ id: `eq.${id}` }),
+    });
+    const deletedAgent = deletedAgents[0];
+
+    if (!deletedAgent) {
+      return NextResponse.json({ error: "Agent not found." }, { status: 404 });
+    }
+
+    await writeAuditLog(context, "agent.deleted", "agent_profiles", id, {
+      email: deletedAgent.email,
+      name: deletedAgent.name,
+    });
+
+    return NextResponse.json({ agent: deletedAgent });
   } catch (error) {
     return portalErrorResponse(error);
   }

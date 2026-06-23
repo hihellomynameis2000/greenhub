@@ -30,6 +30,12 @@ function money(value: number | string | null) {
   }).format(Number.isFinite(amount) ? amount : 0);
 }
 
+function monthFilterValue(label: string) {
+  const [monthName, year] = label.split(" ");
+  const month = months.indexOf(monthName) + 1;
+  return month && year ? `${year}-${month}` : "";
+}
+
 export default function AgentResidualsPage() {
   return (
     <PortalShell role="agent">
@@ -81,6 +87,18 @@ function AgentResidualsContent() {
       }) ?? [],
     [applied, data?.residuals]
   );
+  const demoRows = useMemo(
+    () =>
+      agentResiduals.filter((row) => {
+        const rowMonth = monthFilterValue(row.month);
+        return (
+          (applied.month === "all" || rowMonth === applied.month) &&
+          (applied.platform === "all" || row.platform === applied.platform)
+        );
+      }),
+    [applied]
+  );
+  const filteredRowCount = data ? rows.length : demoRows.length;
 
   return (
     <>
@@ -138,7 +156,7 @@ function AgentResidualsContent() {
                       <td className="px-5 py-3.5 text-right tabular-nums">{money(row.greenhub_net_profit)}</td>
                     </tr>
                   ))
-                : agentResiduals.map((row) => (
+                : demoRows.map((row) => (
                     <tr key={`${row.merchant}-${row.month}`} className="border-t border-slate-200 hover:bg-slate-50">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">{row.merchant}</td>
                       <td className="px-4 py-3.5">{row.platform}</td>
@@ -149,6 +167,13 @@ function AgentResidualsContent() {
                       <td className="px-5 py-3.5 text-right tabular-nums">{row.netProfit}</td>
                     </tr>
                   ))}
+              {filteredRowCount === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-slate-600">
+                    No residuals match the selected filters.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

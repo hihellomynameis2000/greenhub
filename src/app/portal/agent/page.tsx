@@ -34,6 +34,12 @@ function money(value: number) {
   }).format(value);
 }
 
+function monthFilterValue(label: string) {
+  const [monthName, year] = label.split(" ");
+  const month = months.indexOf(monthName) + 1;
+  return month && year ? `${year}-${month}` : "";
+}
+
 export default function AgentDashboard() {
   return (
     <PortalShell role="agent">
@@ -86,6 +92,20 @@ function AgentDashboardContent() {
       );
     });
   }, [appliedFilters, data]);
+  const demoRows = useMemo(
+    () =>
+      agentResiduals.filter((row) => {
+        const rowMonth = monthFilterValue(row.month);
+        return (
+          (appliedFilters.month === "all" || rowMonth === appliedFilters.month) &&
+          (appliedFilters.platform === "all" || row.platform === appliedFilters.platform) &&
+          (appliedFilters.status === "all" ||
+            row.status.toLowerCase() === appliedFilters.status)
+        );
+      }),
+    [appliedFilters]
+  );
+  const filteredRowCount = data ? liveRows.length : demoRows.length;
 
   const latestSummary = data?.monthlySummaries[0];
   const lifetimeSummary = data?.lifetimeSummary;
@@ -189,7 +209,7 @@ function AgentDashboardContent() {
                       </td>
                     </tr>
                   ))
-                : agentResiduals.map((row) => (
+                : demoRows.map((row) => (
                     <tr key={`${row.merchant}-${row.month}`} className="border-t border-slate-200 hover:bg-slate-50">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">{row.merchant}</td>
                       <td className="px-4 py-3.5">{row.platform}</td>
@@ -205,6 +225,13 @@ function AgentDashboardContent() {
                       </td>
                     </tr>
                   ))}
+              {filteredRowCount === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-600">
+                    No residuals match the selected filters.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
