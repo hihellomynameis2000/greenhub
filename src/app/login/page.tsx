@@ -12,49 +12,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [recovering, setRecovering] = useState(false);
   const [error, setError] = useState("");
-  const [recoveryMessage, setRecoveryMessage] = useState("");
-
-  async function requestPasswordRecovery() {
-    setError("");
-    setRecoveryMessage("");
-
-    if (!email.trim()) {
-      setError("Enter your email address to reset your password.");
-      return;
-    }
-
-    setRecovering(true);
-
-    try {
-      const response = await fetch("/api/auth/recover", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const body = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(body.error || "Password recovery could not be started.");
-      }
-
-      setRecoveryMessage("If this email has portal access, a secure password link is on its way.");
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Password recovery could not be started."
-      );
-    } finally {
-      setRecovering(false);
-    }
-  }
 
   async function handleLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
-    setRecoveryMessage("");
     setLoading(true);
 
     try {
@@ -127,25 +89,17 @@ export default function LoginPage() {
           </label>
 
           <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={requestPasswordRecovery}
-              disabled={loading || recovering}
-              className="text-sm font-semibold text-emerald-800 transition-colors hover:text-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+            <Link
+              href="/forgot-password"
+              className="text-sm font-semibold text-emerald-800 transition-colors hover:text-emerald-950"
             >
-              {recovering ? "Sending reset link..." : "Forgot password?"}
-            </button>
+              Forgot password?
+            </Link>
           </div>
 
           {error ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
               {error}
-            </div>
-          ) : null}
-
-          {recoveryMessage ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
-              {recoveryMessage}
             </div>
           ) : null}
 

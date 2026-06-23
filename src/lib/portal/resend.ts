@@ -42,7 +42,7 @@ export function resendConfig() {
   const from = process.env.RESEND_FROM_EMAIL;
   if (!apiKey || !from) {
     throw new PortalApiError(
-      "Agent invitations are not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.",
+      "Portal email delivery is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.",
       500
     );
   }

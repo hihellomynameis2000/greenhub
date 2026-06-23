@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { portalAppUrl, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
-import { supabaseAuthAdmin, supabaseRest } from "@/lib/portal/server";
+import { PortalApiError, supabaseAuthAdmin, supabaseRest } from "@/lib/portal/server";
 import type { AgentProfile } from "@/lib/portal/types";
 
 type RecoveryLinkResponse = {
@@ -53,7 +53,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Password recovery email failed", error);
     return NextResponse.json(
-      { error: "Password recovery is temporarily unavailable. Please contact GreenHub support." },
+      {
+        error:
+          error instanceof PortalApiError
+            ? error.message
+            : "Password recovery is temporarily unavailable. Please contact GreenHub support.",
+      },
       { status: 503 }
     );
   }
