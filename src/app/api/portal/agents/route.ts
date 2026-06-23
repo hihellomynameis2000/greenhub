@@ -12,6 +12,8 @@ import { portalAppUrl, resendConfig, sendPortalAccessEmail } from "@/lib/portal/
 import type { AgentProfile } from "@/lib/portal/types";
 
 type InviteLinkResponse = {
+  action_link?: string;
+  id?: string;
   properties?: {
     action_link?: string;
   };
@@ -74,8 +76,8 @@ export async function POST(request: NextRequest) {
       data: { name },
       redirect_to: `${portalAppUrl()}/set-password`,
     });
-    const authUserId = invitation.user?.id;
-    const inviteUrl = invitation.properties?.action_link;
+    const authUserId = invitation.user?.id ?? invitation.id;
+    const inviteUrl = invitation.action_link ?? invitation.properties?.action_link;
     if (!authUserId || !inviteUrl) {
       throw new Error("Supabase did not return a valid invitation link.");
     }

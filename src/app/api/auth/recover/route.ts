@@ -4,6 +4,7 @@ import { PortalApiError, supabaseAuthAdmin, supabaseRest } from "@/lib/portal/se
 import type { AgentProfile } from "@/lib/portal/types";
 
 type RecoveryLinkResponse = {
+  action_link?: string;
   properties?: {
     action_link?: string;
   };
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
       email: profile.email,
       redirect_to: `${portalAppUrl()}/set-password`,
     });
-    const accessUrl = recovery.properties?.action_link;
+    const accessUrl = recovery.action_link ?? recovery.properties?.action_link;
 
     if (!accessUrl) {
       throw new Error("Supabase did not return a password recovery link.");
