@@ -8,10 +8,13 @@ import {
   supabaseRest,
   writeAuditLog,
 } from "@/lib/portal/server";
+import { portalAppUrl, resendConfig, sendAgentInviteEmail } from "@/lib/portal/resend";
 import type { AgentProfile } from "@/lib/portal/types";
 
-type InviteResponse = {
-  id?: string;
+type InviteLinkResponse = {
+  properties?: {
+    action_link?: string;
+  };
   user?: { id: string };
 };
 
@@ -48,6 +51,7 @@ export async function POST(request: NextRequest) {
     const role = validRole(body.role) ? body.role : "agent";
     const status = validStatus(body.status) ? body.status : "active";
     const rate = commissionRate(body.commissionRate);
+    resendConfig();
 
     const existingQuery = new URLSearchParams({
       select: "id",
@@ -64,13 +68,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const invitation = await supabaseAuthAdmin<InviteResponse>("invite", {
+    const invitation = await supabaseAuthAdmin<InviteLinkResponse>("admin/generate_link", {
+      type: "invite",
       email,
       data: { name },
+      redirect_to: `${portalAppUrl()}/set-password`,
     });
-    const authUserId = invitation.user?.id ?? invitation.id;
-    if (!authUserId) {
-      throw new Error("Supabase did not return an invited user ID.");
+    const authUserId = invitation.user?.id;
+    const inviteUrl = invitation.properties?.action_link;
+    if (!authUserId || !inviteUrl) {
+      throw new Error("Supabase did not return a valid invitation link.");
     }
 
     const profiles = await supabaseRest<AgentProfile[]>("agent_profiles", {
@@ -86,8 +93,10 @@ export async function POST(request: NextRequest) {
       },
     });
     const agent = profiles[0];
+    await sendAgentInviteEmail({ inviteUrl, name, to: email });
     await writeAuditLog(context, "agent.created", "agent_profiles", agent.id, {
       email,
+      invitationDelivery: "resend",
       role,
     });
 
