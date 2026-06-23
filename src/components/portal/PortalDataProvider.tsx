@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { portalRequest, portalSupabase } from "@/lib/portal/client";
+import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
 import type { PortalBootstrap } from "@/lib/portal/types";
 
 type PortalDataState = {
@@ -19,9 +19,17 @@ export function PortalDataProvider({ children }: { children: React.ReactNode }) 
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const {
-      data: { session },
-    } = await portalSupabase.auth.getSession();
+    let session;
+
+    try {
+      const result = await getPortalSupabase().auth.getSession();
+      session = result.data.session;
+    } catch {
+      setData(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
 
     if (!session) {
       setData(null);

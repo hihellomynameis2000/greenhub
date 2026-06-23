@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { portalRequest, portalSupabase } from "@/lib/portal/client";
+import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
 import type { PortalBootstrap } from "@/lib/portal/types";
 
 export default function PortalRedirect() {
@@ -10,8 +10,16 @@ export default function PortalRedirect() {
 
   useEffect(() => {
     async function run() {
-      const { data } = await portalSupabase.auth.getSession();
-      const userEmail = data.session?.user?.email;
+      let data;
+
+      try {
+        data = await getPortalSupabase().auth.getSession();
+      } catch {
+        router.replace("/login");
+        return;
+      }
+
+      const userEmail = data.data.session?.user?.email;
 
       if (!userEmail) {
         router.replace("/login");

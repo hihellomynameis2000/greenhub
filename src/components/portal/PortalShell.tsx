@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { portalRequest, portalSupabase } from "@/lib/portal/client";
+import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
 import type { PortalBootstrap } from "@/lib/portal/types";
 import { agents } from "./mockData";
 import { PortalDataProvider } from "./PortalDataProvider";
@@ -64,9 +64,17 @@ export function PortalShell({
 
   useEffect(() => {
     async function loadViewer() {
+      let supabase;
+
+      try {
+        supabase = getPortalSupabase();
+      } catch {
+        return;
+      }
+
       const {
         data: { user },
-      } = await portalSupabase.auth.getUser();
+      } = await supabase.auth.getUser();
 
       if (!user?.email) return;
 
@@ -81,7 +89,7 @@ export function PortalShell({
 
         setViewer({ name: profile.name || nameFromEmail(user.email), email: user.email });
       } catch {
-        await portalSupabase.auth.signOut();
+        await supabase.auth.signOut();
         router.replace("/login");
       }
     }
@@ -114,8 +122,12 @@ export function PortalShell({
   async function handleSignOut() {
     setSigningOut(true);
     setMenuOpen(false);
-    await portalSupabase.auth.signOut();
-    router.replace("/login");
+
+    try {
+      await getPortalSupabase().auth.signOut();
+    } finally {
+      router.replace("/login");
+    }
   }
 
   return (

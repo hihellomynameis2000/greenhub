@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { portalRequest, portalSupabase } from "@/lib/portal/client";
+import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
 import type { PortalBootstrap } from "@/lib/portal/types";
 
 export default function LoginPage() {
@@ -20,7 +20,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { error: authError } = await portalSupabase.auth.signInWithPassword({
+      const { error: authError } = await getPortalSupabase().auth.signInWithPassword({
         email,
         password,
       });
