@@ -2,6 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import {
+  Building2,
+  ChevronDown,
+  LayoutDashboard,
+  LogOut,
+  ReceiptText,
+  Settings,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
@@ -12,17 +22,23 @@ import { PortalNotificationMenu } from "./PortalNotificationMenu";
 import { PortalToastViewport } from "./PortalToast";
 export { portalInputClass } from "./portalFieldStyles";
 
-const adminLinks = [
-  ["Overview", "/portal/admin"],
-  ["Agents", "/portal/admin/agents"],
-  ["Accounts", "/portal/admin/accounts"],
-  ["Residuals", "/portal/admin/residuals"],
+type PortalLink = {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+};
+
+const adminLinks: PortalLink[] = [
+  { href: "/portal/admin", icon: LayoutDashboard, label: "Overview" },
+  { href: "/portal/admin/agents", icon: Users, label: "Agents" },
+  { href: "/portal/admin/accounts", icon: Building2, label: "Accounts" },
+  { href: "/portal/admin/residuals", icon: ReceiptText, label: "Residuals" },
 ];
 
-const agentLinks = [
-  ["Overview", "/portal/agent"],
-  ["Accounts", "/portal/agent/accounts"],
-  ["Residuals", "/portal/agent/residuals"],
+const agentLinks: PortalLink[] = [
+  { href: "/portal/agent", icon: LayoutDashboard, label: "Overview" },
+  { href: "/portal/agent/accounts", icon: Building2, label: "Accounts" },
+  { href: "/portal/agent/residuals", icon: ReceiptText, label: "Residuals" },
 ];
 
 function nameFromEmail(email: string) {
@@ -148,19 +164,20 @@ export function PortalShell({
           <div className="mb-2 px-3 text-xs font-medium text-slate-500">
             {role === "admin" ? "Administration" : "Agent reporting"}
           </div>
-          {links.map(([label, href]) => {
+          {links.map(({ href, icon: Icon, label }) => {
             const active = pathname === href;
 
             return (
               <Link
                 key={href}
                 href={href}
-                className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
                   active
                     ? "bg-slate-200 text-slate-950"
                     : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
                 }`}
               >
+                <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                 {label}
               </Link>
             );
@@ -214,10 +231,7 @@ export function PortalShell({
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-800 text-xs font-bold text-white">
                     {initialsFromName(viewer.name)}
                   </span>
-                  <span
-                    aria-hidden="true"
-                    className="mr-1 h-2 w-2 -translate-y-0.5 rotate-45 border-b-2 border-r-2 border-current"
-                  />
+                  <ChevronDown aria-hidden="true" className="mr-0.5 h-4 w-4" strokeWidth={2} />
                 </button>
 
                 {menuOpen ? (
@@ -238,8 +252,9 @@ export function PortalShell({
                         href="/portal/agent/settings"
                         role="menuitem"
                         onClick={() => setMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-100"
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-100"
                       >
+                        <Settings aria-hidden="true" className="h-4 w-4 text-slate-500" strokeWidth={1.8} />
                         Account settings
                       </Link>
                     ) : null}
@@ -248,8 +263,9 @@ export function PortalShell({
                       role="menuitem"
                       onClick={handleSignOut}
                       disabled={signingOut}
-                      className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
+                      <LogOut aria-hidden="true" className="h-4 w-4 text-slate-500" strokeWidth={1.8} />
                       {signingOut ? "Signing out..." : "Sign out"}
                     </button>
                   </div>
@@ -261,19 +277,20 @@ export function PortalShell({
 
           <nav className="border-b border-slate-200 bg-white px-4 py-2 md:hidden">
             <div className="flex gap-1 overflow-x-auto">
-              {links.map(([label, href]) => {
+              {links.map(({ href, icon: Icon, label }) => {
                 const active = pathname === href;
 
                 return (
                   <Link
                     key={href}
                     href={href}
-                    className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${
+                    className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold ${
                       active
                         ? "bg-slate-200 text-slate-950"
                         : "text-slate-700 hover:bg-slate-100"
                     }`}
                   >
+                    <Icon aria-hidden="true" className="h-4 w-4" strokeWidth={1.9} />
                     {label}
                   </Link>
                 );

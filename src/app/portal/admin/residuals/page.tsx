@@ -4,6 +4,7 @@ import { Bell, ChevronDown, FileText, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
+import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
@@ -24,6 +25,8 @@ const months = [
   "November",
   "December",
 ];
+
+const residualsPerPage = 10;
 
 type ResidualForm = {
   agentId: string;
@@ -153,6 +156,7 @@ function AdminResidualsContent() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recentPage, setRecentPage] = useState(1);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
 
   const accountOptions = data
@@ -358,6 +362,12 @@ function AdminResidualsContent() {
   }
 
   const rows = data?.residuals ?? [];
+  const totalRows = data ? rows.length : demoResidualRows.length;
+  const pageCount = Math.max(1, Math.ceil(totalRows / residualsPerPage));
+  const activePage = Math.min(recentPage, pageCount);
+  const pageOffset = (activePage - 1) * residualsPerPage;
+  const paginatedRows = rows.slice(pageOffset, pageOffset + residualsPerPage);
+  const paginatedDemoRows = demoResidualRows.slice(pageOffset, pageOffset + residualsPerPage);
 
   return (
     <>
@@ -559,7 +569,7 @@ function AdminResidualsContent() {
             </thead>
             <tbody>
               {data
-                ? rows.map((residual) => (
+                ? paginatedRows.map((residual) => (
                     <tr key={residual.id} className="border-t border-slate-200">
                       <td className="p-4 font-semibold text-slate-950">
                         {accountNames.get(residual.merchant_account_id) ?? "Unknown account"}
@@ -574,7 +584,7 @@ function AdminResidualsContent() {
                       <td><ResidualStatus status={residual.residual_status} /></td>
                     </tr>
                   ))
-                : demoResidualRows.map((row) => (
+                : paginatedDemoRows.map((row) => (
                     <tr key={`${row.merchant}-${row.month}`} className="border-t border-slate-200">
                       <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
                       <td>{row.agent}</td>
@@ -590,6 +600,13 @@ function AdminResidualsContent() {
             </tbody>
           </table>
         </div>
+        <PortalPagination
+          page={activePage}
+          pageCount={pageCount}
+          pageSize={residualsPerPage}
+          totalItems={totalRows}
+          onPageChange={setRecentPage}
+        />
       </section>
     </>
   );

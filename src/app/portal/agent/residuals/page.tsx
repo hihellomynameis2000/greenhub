@@ -3,8 +3,11 @@
 import { useMemo, useState } from "react";
 import { agentResiduals, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
+import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
+
+const residualsPerPage = 10;
 
 const months = [
   "January",
@@ -49,6 +52,7 @@ function AgentResidualsContent() {
   const [month, setMonth] = useState("all");
   const [platform, setPlatform] = useState("all");
   const [applied, setApplied] = useState({ month: "all", platform: "all" });
+  const [page, setPage] = useState(1);
   const accountNames = new Map(data?.accounts.map((account) => [account.id, account.account_name]) ?? []);
   const platformNames = new Map(data?.platforms.map((item) => [item.id, item.name]) ?? []);
 
@@ -99,6 +103,11 @@ function AgentResidualsContent() {
     [applied]
   );
   const filteredRowCount = data ? rows.length : demoRows.length;
+  const pageCount = Math.max(1, Math.ceil(filteredRowCount / residualsPerPage));
+  const activePage = Math.min(page, pageCount);
+  const pageOffset = (activePage - 1) * residualsPerPage;
+  const paginatedRows = rows.slice(pageOffset, pageOffset + residualsPerPage);
+  const paginatedDemoRows = demoRows.slice(pageOffset, pageOffset + residualsPerPage);
 
   return (
     <>
@@ -120,7 +129,10 @@ function AgentResidualsContent() {
             <PortalSelect ariaLabel="Platform" value={platform} onValueChange={setPlatform} options={platformOptions} />
             <button
               type="button"
-              onClick={() => setApplied({ month, platform })}
+              onClick={() => {
+                setApplied({ month, platform });
+                setPage(1);
+              }}
               className="rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
             >
               Filter
@@ -143,7 +155,7 @@ function AgentResidualsContent() {
             </thead>
             <tbody>
               {data
-                ? rows.map((row) => (
+                ? paginatedRows.map((row) => (
                     <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">
                         {accountNames.get(row.merchant_account_id) ?? "Unknown account"}
@@ -156,7 +168,7 @@ function AgentResidualsContent() {
                       <td className="px-5 py-3.5 text-right tabular-nums">{money(row.greenhub_net_profit)}</td>
                     </tr>
                   ))
-                : demoRows.map((row) => (
+                : paginatedDemoRows.map((row) => (
                     <tr key={`${row.merchant}-${row.month}`} className="border-t border-slate-200 hover:bg-slate-50">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">{row.merchant}</td>
                       <td className="px-4 py-3.5">{row.platform}</td>
@@ -177,6 +189,13 @@ function AgentResidualsContent() {
             </tbody>
           </table>
         </div>
+        <PortalPagination
+          page={activePage}
+          pageCount={pageCount}
+          pageSize={residualsPerPage}
+          totalItems={filteredRowCount}
+          onPageChange={setPage}
+        />
       </section>
     </>
   );

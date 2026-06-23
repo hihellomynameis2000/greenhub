@@ -3,8 +3,11 @@
 import { useMemo, useState } from "react";
 import { agentResiduals, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
+import { PortalPagination } from "@/components/portal/PortalPagination";
 import { Card, PageHeader, PortalShell } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
+
+const residualsPerPage = 10;
 
 const months = [
   "January",
@@ -54,6 +57,7 @@ function AgentDashboardContent() {
   const [platform, setPlatform] = useState("all");
   const [status, setStatus] = useState("finalized");
   const [appliedFilters, setAppliedFilters] = useState({ month: "all", platform: "all", status: "finalized" });
+  const [page, setPage] = useState(1);
   const accountNames = new Map(data?.accounts.map((account) => [account.id, account.account_name]) ?? []);
   const platformNames = new Map(data?.platforms.map((item) => [item.id, item.name]) ?? []);
   const monthOptions = data
@@ -106,6 +110,11 @@ function AgentDashboardContent() {
     [appliedFilters]
   );
   const filteredRowCount = data ? liveRows.length : demoRows.length;
+  const pageCount = Math.max(1, Math.ceil(filteredRowCount / residualsPerPage));
+  const activePage = Math.min(page, pageCount);
+  const pageOffset = (activePage - 1) * residualsPerPage;
+  const paginatedLiveRows = liveRows.slice(pageOffset, pageOffset + residualsPerPage);
+  const paginatedDemoRows = demoRows.slice(pageOffset, pageOffset + residualsPerPage);
 
   const latestSummary = data?.monthlySummaries[0];
   const lifetimeSummary = data?.lifetimeSummary;
@@ -167,7 +176,10 @@ function AgentDashboardContent() {
             />
             <button
               type="button"
-              onClick={() => setAppliedFilters({ month, platform, status })}
+              onClick={() => {
+                setAppliedFilters({ month, platform, status });
+                setPage(1);
+              }}
               className="rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-900"
             >
               Filter
@@ -191,7 +203,7 @@ function AgentDashboardContent() {
             </thead>
             <tbody>
               {data
-                ? liveRows.map((row) => (
+                ? paginatedLiveRows.map((row) => (
                     <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">
                         {accountNames.get(row.merchant_account_id) ?? "Unknown account"}
@@ -209,7 +221,7 @@ function AgentDashboardContent() {
                       </td>
                     </tr>
                   ))
-                : demoRows.map((row) => (
+                : paginatedDemoRows.map((row) => (
                     <tr key={`${row.merchant}-${row.month}`} className="border-t border-slate-200 hover:bg-slate-50">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">{row.merchant}</td>
                       <td className="px-4 py-3.5">{row.platform}</td>
@@ -235,6 +247,13 @@ function AgentDashboardContent() {
             </tbody>
           </table>
         </div>
+        <PortalPagination
+          page={activePage}
+          pageCount={pageCount}
+          pageSize={residualsPerPage}
+          totalItems={filteredRowCount}
+          onPageChange={setPage}
+        />
       </section>
     </>
   );
