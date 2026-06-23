@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 type LeadPayload = {
   dbaName?: string;
@@ -121,14 +122,21 @@ function toSalesforcePayload(body: LeadPayload) {
 }
 
 function getSupabaseClient() {
-  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error("Missing Supabase env vars");
   }
 
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+    realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
+  });
 }
 
 function toText(value: unknown): string | null {
