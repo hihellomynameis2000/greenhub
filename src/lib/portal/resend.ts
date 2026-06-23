@@ -2,9 +2,10 @@ import "server-only";
 
 import { PortalApiError } from "./server";
 
-type AgentInviteEmail = {
-  inviteUrl: string;
+type PortalAccessEmail = {
+  accessUrl: string;
   name: string;
+  type: "invite" | "recovery";
   to: string;
 };
 
@@ -49,11 +50,25 @@ export function resendConfig() {
   return { apiKey, from };
 }
 
-export async function sendAgentInviteEmail({ inviteUrl, name, to }: AgentInviteEmail) {
+export async function sendPortalAccessEmail({
+  accessUrl,
+  name,
+  to,
+  type,
+}: PortalAccessEmail) {
   const { apiKey, from } = resendConfig();
 
   const safeName = escapeHtml(name);
-  const safeInviteUrl = escapeHtml(inviteUrl);
+  const safeAccessUrl = escapeHtml(accessUrl);
+  const isInvite = type === "invite";
+  const headline = isInvite ? "Welcome to GreenHub" : "Reset your GreenHub password";
+  const description = isInvite
+    ? "You have been invited to access the GreenHub Residual Portal. Use the secure link below to set your password and activate your account."
+    : "Use the secure link below to set a new password for your GreenHub Residual Portal account.";
+  const actionLabel = isInvite ? "Set up your account" : "Set a new password";
+  const subject = isInvite
+    ? "You are invited to the GreenHub Residual Portal"
+    : "Reset your GreenHub Residual Portal password";
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -64,17 +79,17 @@ export async function sendAgentInviteEmail({ inviteUrl, name, to }: AgentInviteE
       from,
       html: `
         <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5;max-width:560px;margin:0 auto;padding:24px">
-          <h1 style="font-size:24px;margin:0 0 16px">Welcome to GreenHub</h1>
+          <h1 style="font-size:24px;margin:0 0 16px">${headline}</h1>
           <p>Hi ${safeName},</p>
-          <p>You have been invited to access the GreenHub Residual Portal. Use the secure link below to set your password and activate your account.</p>
+          <p>${description}</p>
           <p style="margin:28px 0">
-            <a href="${safeInviteUrl}" style="background:#065f46;border-radius:8px;color:#ffffff;display:inline-block;font-weight:700;padding:12px 18px;text-decoration:none">Set up your account</a>
+            <a href="${safeAccessUrl}" style="background:#065f46;border-radius:8px;color:#ffffff;display:inline-block;font-weight:700;padding:12px 18px;text-decoration:none">${actionLabel}</a>
           </p>
           <p style="color:#475569;font-size:13px">If you did not expect this invitation, you can ignore this email.</p>
         </div>
       `,
-      subject: "You are invited to the GreenHub Residual Portal",
-      text: `Hi ${name},\n\nYou have been invited to access the GreenHub Residual Portal. Set your password and activate your account here:\n${inviteUrl}\n\nIf you did not expect this invitation, you can ignore this email.`,
+      subject,
+      text: `Hi ${name},\n\n${description}\n${accessUrl}\n\nIf you did not expect this email, you can ignore it.`,
       to: [to],
     }),
   });

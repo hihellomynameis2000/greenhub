@@ -8,7 +8,7 @@ import {
   supabaseRest,
   writeAuditLog,
 } from "@/lib/portal/server";
-import { portalAppUrl, resendConfig, sendAgentInviteEmail } from "@/lib/portal/resend";
+import { portalAppUrl, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
 import type { AgentProfile } from "@/lib/portal/types";
 
 type InviteLinkResponse = {
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       },
     });
     const agent = profiles[0];
-    await sendAgentInviteEmail({ inviteUrl, name, to: email });
+    await sendPortalAccessEmail({ accessUrl: inviteUrl, name, to: email, type: "invite" });
     await writeAuditLog(context, "agent.created", "agent_profiles", agent.id, {
       email,
       invitationDelivery: "resend",
