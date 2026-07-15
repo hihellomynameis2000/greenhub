@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   decimalValue,
+  optionalString,
+  PortalApiError,
   portalErrorResponse,
   requirePortalContext,
   requiredString,
@@ -33,6 +35,59 @@ function commissionRate(value: unknown) {
   return decimalValue(value);
 }
 
+function supportsCommissionNotes(error: unknown) {
+  return !(
+    error instanceof PortalApiError &&
+    /commission_notes|schema cache|column/i.test(error.message)
+  );
+}
+
+async function insertAgentProfile(body: Record<string, unknown>) {
+  try {
+    return await supabaseRest<AgentProfile[]>("agent_profiles", {
+      method: "POST",
+      prefer: "return=representation",
+      body,
+    });
+  } catch (error) {
+    if (supportsCommissionNotes(error) || !("commission_notes" in body)) throw error;
+    const { commission_notes: _commissionNotes, ...fallbackBody } = body;
+    return supabaseRest<AgentProfile[]>("agent_profiles", {
+      method: "POST",
+      prefer: "return=representation",
+      body: fallbackBody,
+    });
+  }
+}
+
+async function updateAgentProfile(id: string, updates: Record<string, unknown>) {
+  const query = new URLSearchParams({ id: `eq.${id}` });
+
+  try {
+    return await supabaseRest<AgentProfile[]>("agent_profiles", {
+      method: "PATCH",
+      prefer: "return=representation",
+      query,
+      body: updates,
+    });
+  } catch (error) {
+    if (supportsCommissionNotes(error) || !("commission_notes" in updates)) throw error;
+    const { commission_notes: _commissionNotes, ...fallbackUpdates } = updates;
+    if (!Object.keys(fallbackUpdates).length) {
+      throw new PortalApiError(
+        "Commission rate notes are not available until the agent profile migration is applied.",
+        400
+      );
+    }
+    return supabaseRest<AgentProfile[]>("agent_profiles", {
+      method: "PATCH",
+      prefer: "return=representation",
+      query,
+      body: fallbackUpdates,
+    });
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requirePortalContext(request, "admin");
@@ -53,6 +108,7 @@ export async function POST(request: NextRequest) {
     const role = validRole(body.role) ? body.role : "agent";
     const status = validStatus(body.status) ? body.status : "active";
     const rate = commissionRate(body.commissionRate);
+    const commissionNotes = optionalString(body.commissionNotes);
     resendConfig();
 
     const existingQuery = new URLSearchParams({
@@ -82,17 +138,14 @@ export async function POST(request: NextRequest) {
       throw new Error("Supabase did not return a valid invitation link.");
     }
 
-    const profiles = await supabaseRest<AgentProfile[]>("agent_profiles", {
-      method: "POST",
-      prefer: "return=representation",
-      body: {
-        auth_user_id: authUserId,
-        commission_rate: rate,
-        email,
-        name,
-        role,
-        status,
-      },
+    const profiles = await insertAgentProfile({
+      auth_user_id: authUserId,
+      commission_notes: commissionNotes,
+      commission_rate: rate,
+      email,
+      name,
+      role,
+      status,
     });
     const agent = profiles[0];
     await sendPortalAccessEmail({ accessUrl: inviteUrl, name, to: email, type: "invite" });
@@ -127,18 +180,15 @@ export async function PATCH(request: NextRequest) {
     if (body.commissionRate !== undefined) {
       updates.commission_rate = commissionRate(body.commissionRate);
     }
+    if (body.commissionNotes !== undefined) {
+      updates.commission_notes = optionalString(body.commissionNotes);
+    }
     if (body.email !== undefined) updates.email = requiredString(body.email, "Email address").toLowerCase();
     if (!Object.keys(updates).length) {
       return NextResponse.json({ error: "No agent changes were provided." }, { status: 400 });
     }
 
-    const query = new URLSearchParams({ id: `eq.${id}` });
-    const agents = await supabaseRest<AgentProfile[]>("agent_profiles", {
-      method: "PATCH",
-      prefer: "return=representation",
-      query,
-      body: updates,
-    });
+    const agents = await updateAgentProfile(id, updates);
     const agent = agents[0];
     if (!agent) return NextResponse.json({ error: "Agent not found." }, { status: 404 });
 
@@ -163,7 +213,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const agentQuery = new URLSearchParams({
-      select: "id,auth_user_id,name,email,role,status,commission_rate,created_at,updated_at",
+      select: "*",
       id: `eq.${id}`,
       limit: "1",
     });

@@ -3,6 +3,7 @@ export type NumericValue = number | string | null;
 
 export type AgentProfile = {
   auth_user_id: string | null;
+  commission_notes?: string | null;
   commission_rate: NumericValue;
   created_at: string;
   email: string;
@@ -37,12 +38,17 @@ export type MerchantAccount = {
 
 export type MonthlyResidual = {
   agent_id: string;
+  agent_commission_structure?: string | null;
   agent_profit: NumericValue;
   created_at: string;
   created_by: string | null;
   equipment_cost: NumericValue;
   greenhub_net_profit: NumericValue;
+  greenhub_pob_buy_rate?: NumericValue;
+  greenhub_pob_net_profit?: NumericValue;
+  greenhub_pob_profit_per_transaction?: NumericValue;
   id: string;
+  merchant_notes?: string | null;
   merchant_account_id: string;
   monthly_sales_volume: NumericValue;
   one_time_fees: NumericValue;

@@ -36,13 +36,12 @@ function AgentAccountsContent() {
           </span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm text-slate-900">
+          <table className="w-full min-w-[620px] text-left text-sm text-slate-900">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
               <tr>
                 <th className="px-5 py-3 font-semibold">Merchant</th>
                 <th className="px-4 py-3 font-semibold">Platform</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-5 py-3 font-semibold">Commission Structure</th>
               </tr>
             </thead>
             <tbody>
@@ -64,7 +63,6 @@ function AgentAccountsContent() {
                           {account.status}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">{account.commission_structure || "Not specified"}</td>
                     </tr>
                   ))
                 : demoAccounts.map((account) => (
@@ -82,7 +80,6 @@ function AgentAccountsContent() {
                           {account.status}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">Agent portfolio</td>
                     </tr>
                   ))}
             </tbody>

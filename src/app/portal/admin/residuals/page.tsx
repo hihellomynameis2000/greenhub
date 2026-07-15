@@ -29,9 +29,14 @@ const months = [
 const residualsPerPage = 10;
 
 type ResidualForm = {
+  agentCommissionStructure: string;
   agentId: string;
   agentProfit: string;
   equipmentCost: string;
+  greenhubPobBuyRate: string;
+  greenhubPobNetProfit: string;
+  greenhubPobProfitPerTransaction: string;
+  merchantNotes: string;
   merchantAccountId: string;
   month: string;
   monthlySalesVolume: string;
@@ -53,10 +58,39 @@ type DraftEntry = {
   title: string;
 };
 
+type ResidualReportRow = {
+  agent: string;
+  agentCommissionStructure: string;
+  agentId: string;
+  agentProfit: number;
+  equipmentCost: number;
+  greenhubNetProfit: number;
+  greenhubPobBuyRate: number;
+  greenhubPobNetProfit: number;
+  greenhubPobProfitPerTransaction: number;
+  id: string;
+  merchant: string;
+  merchantNotes: string;
+  month: string;
+  monthValue: string;
+  platform: string;
+  profitPerTransaction: number;
+  rebate: number;
+  salesVolume: number;
+  status: "draft" | "finalized";
+  surcharge: number;
+  transactionsPerMonth: number;
+};
+
 const initialForm: ResidualForm = {
+  agentCommissionStructure: "",
   agentId: "",
   agentProfit: "",
   equipmentCost: "",
+  greenhubPobBuyRate: "",
+  greenhubPobNetProfit: "",
+  greenhubPobProfitPerTransaction: "",
+  merchantNotes: "",
   merchantAccountId: "",
   month: "January",
   monthlySalesVolume: "",
@@ -77,9 +111,14 @@ const demoDrafts: DraftEntry[] = [
     title: "Prime Wellness - April 2026",
     savedAt: "Saved today at 10:42 AM",
     data: {
+      agentCommissionStructure: "50% net profit share",
       agentId: "nick@greenhubinc.com",
       agentProfit: "$1,020.79",
       equipmentCost: "$250.00",
+      greenhubPobBuyRate: "$3.00",
+      greenhubPobNetProfit: "$655.20",
+      greenhubPobProfitPerTransaction: "$1.20",
+      merchantNotes: "Strong month. No merchant exceptions.",
       merchantAccountId: "Prime Wellness",
       month: "April",
       monthlySalesVolume: "$54,595",
@@ -99,9 +138,14 @@ const demoDrafts: DraftEntry[] = [
     title: "Oakline Retail - May 2026",
     savedAt: "Saved yesterday at 4:18 PM",
     data: {
+      agentCommissionStructure: "45% net profit share",
       agentId: "rob@paynex.net",
       agentProfit: "$332.58",
       equipmentCost: "$200.00",
+      greenhubPobBuyRate: "$2.75",
+      greenhubPobNetProfit: "$384.30",
+      greenhubPobProfitPerTransaction: "$1.05",
+      merchantNotes: "Rebate applied for May volume.",
       merchantAccountId: "Oakline Retail",
       month: "May",
       monthlySalesVolume: "$34,220",
@@ -118,17 +162,24 @@ const demoDrafts: DraftEntry[] = [
   },
 ];
 
-function inputValue(value: number | string | null) {
+function inputValue(value: number | string | null | undefined) {
   return value === null || value === undefined ? "" : String(value);
 }
 
-function currency(value: number | string | null) {
-  const numeric = Number(value ?? 0);
+function amount(value: number | string | null | undefined) {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : Number(String(value ?? 0).replace(/[$,%\s,]/g, ""));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function currency(value: number | string | null | undefined) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(numeric) ? numeric : 0);
+  }).format(amount(value));
 }
 
 function savedAt(value: string) {
@@ -156,6 +207,9 @@ function AdminResidualsContent() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportAgent, setReportAgent] = useState("all");
+  const [reportMonth, setReportMonth] = useState("all");
+  const [reportStatus, setReportStatus] = useState("all");
   const [recentPage, setRecentPage] = useState(1);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -181,6 +235,20 @@ function AdminResidualsContent() {
     () => new Map(data?.platforms.map((platform) => [platform.id, platform.name]) ?? []),
     [data?.platforms]
   );
+  const reportMonthOptions = data
+    ? [
+        { label: "All months", value: "all" },
+        ...Array.from(
+          new Set(data.residuals.map((row) => `${row.residual_year}-${row.residual_month}`))
+        ).map((value) => {
+          const [year, numericMonth] = value.split("-");
+          return { label: `${months[Number(numericMonth) - 1]} ${year}`, value };
+        }),
+      ]
+    : [
+        { label: "All months", value: "all" },
+        { label: "April 2024", value: "2024-4" },
+      ];
 
   const drafts = useMemo<DraftEntry[]>(() => {
     if (!data) return previewDrafts;
@@ -222,10 +290,15 @@ function AdminResidualsContent() {
 
   function apiPayload(nextStatus: ResidualForm["status"]) {
     return {
+      agentCommissionStructure: form.agentCommissionStructure,
       agentId: form.agentId,
       agentProfit: form.agentProfit,
       equipmentCost: form.equipmentCost,
       greenhubNetProfit: form.netProfit,
+      greenhubPobBuyRate: form.greenhubPobBuyRate,
+      greenhubPobNetProfit: form.greenhubPobNetProfit,
+      greenhubPobProfitPerTransaction: form.greenhubPobProfitPerTransaction,
+      merchantNotes: form.merchantNotes,
       merchantAccountId: form.merchantAccountId,
       monthlySalesVolume: form.monthlySalesVolume,
       oneTimeFees: form.oneTimeFees,
@@ -361,13 +434,54 @@ function AdminResidualsContent() {
     }
   }
 
-  const rows = data?.residuals ?? [];
-  const totalRows = data ? rows.length : demoResidualRows.length;
+  const liveReportRows = useMemo<ResidualReportRow[]>(
+    () =>
+      data?.residuals.map((residual) => ({
+        agent: agentNames.get(residual.agent_id) ?? "Unknown agent",
+        agentCommissionStructure:
+          residual.agent_commission_structure ||
+          data.accounts.find((account) => account.id === residual.merchant_account_id)
+            ?.commission_structure ||
+          "Not specified",
+        agentId: residual.agent_id,
+        agentProfit: amount(residual.agent_profit),
+        equipmentCost: amount(residual.equipment_cost),
+        greenhubNetProfit: amount(residual.greenhub_net_profit),
+        greenhubPobBuyRate: amount(residual.greenhub_pob_buy_rate),
+        greenhubPobNetProfit: amount(residual.greenhub_pob_net_profit),
+        greenhubPobProfitPerTransaction: amount(residual.greenhub_pob_profit_per_transaction),
+        id: residual.id,
+        merchant: accountNames.get(residual.merchant_account_id) ?? "Unknown account",
+        merchantNotes: residual.merchant_notes ?? "",
+        month: `${months[residual.residual_month - 1]} ${residual.residual_year}`,
+        monthValue: `${residual.residual_year}-${residual.residual_month}`,
+        platform: platformNames.get(residual.platform_id ?? "") ?? "Unassigned",
+        profitPerTransaction: amount(residual.profit_per_transaction),
+        rebate: amount(residual.rebate),
+        salesVolume: amount(residual.monthly_sales_volume),
+        status: residual.residual_status,
+        surcharge: amount(residual.surcharge),
+        transactionsPerMonth: amount(residual.transactions_per_month),
+      })) ?? [],
+    [accountNames, agentNames, data, platformNames]
+  );
+  const previewReportRows = useMemo(
+    () => demoResidualRows.map((row) => demoReportRow(row)),
+    []
+  );
+  const reportRows = data ? liveReportRows : previewReportRows;
+  const filteredReportRows = reportRows.filter(
+    (row) =>
+      (reportAgent === "all" || row.agentId === reportAgent) &&
+      (reportMonth === "all" || row.monthValue === reportMonth) &&
+      (reportStatus === "all" || row.status === reportStatus)
+  );
+  const totalRows = filteredReportRows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / residualsPerPage));
   const activePage = Math.min(recentPage, pageCount);
   const pageOffset = (activePage - 1) * residualsPerPage;
-  const paginatedRows = rows.slice(pageOffset, pageOffset + residualsPerPage);
-  const paginatedDemoRows = demoResidualRows.slice(pageOffset, pageOffset + residualsPerPage);
+  const paginatedReportRows = filteredReportRows.slice(pageOffset, pageOffset + residualsPerPage);
+  const reportTotals = totalResiduals(filteredReportRows);
 
   return (
     <>
@@ -482,15 +596,35 @@ function AdminResidualsContent() {
               { label: "Finalized", value: "finalized" },
             ]}
           />
+          <ResidualInput label="GreenHub POB Buy Rate" field="greenhubPobBuyRate" form={form} updateForm={updateForm} />
+          <input
+            className={portalInputClass}
+            placeholder="Agent Commission Structure"
+            value={form.agentCommissionStructure}
+            onChange={(event) => updateForm("agentCommissionStructure", event.target.value)}
+          />
           <ResidualInput label="Monthly Sales Volume" field="monthlySalesVolume" form={form} updateForm={updateForm} />
           <ResidualInput label="GreenHub Net Profit" field="netProfit" form={form} updateForm={updateForm} />
           <ResidualInput label="Surcharge" field="surcharge" form={form} updateForm={updateForm} />
-          <ResidualInput label="Rebate" field="rebate" form={form} updateForm={updateForm} />
-          <ResidualInput label="Profit Per Transaction" field="profitPerTransaction" form={form} updateForm={updateForm} />
+          <ResidualInput label="Rebate to Merchant" field="rebate" form={form} updateForm={updateForm} />
+          <ResidualInput label="Agent Profit Per Transaction" field="profitPerTransaction" form={form} updateForm={updateForm} />
+          <ResidualInput
+            label="GreenHub POB Profit Per Transaction"
+            field="greenhubPobProfitPerTransaction"
+            form={form}
+            updateForm={updateForm}
+          />
           <ResidualInput label="Transactions Per Month" field="transactionsPerMonth" form={form} updateForm={updateForm} />
           <ResidualInput label="Agent Profit" field="agentProfit" form={form} updateForm={updateForm} />
+          <ResidualInput label="GreenHub POB Net Profit" field="greenhubPobNetProfit" form={form} updateForm={updateForm} />
           <ResidualInput label="Equipment Cost" field="equipmentCost" form={form} updateForm={updateForm} />
-          <ResidualInput label="One-Time Fees" field="oneTimeFees" form={form} updateForm={updateForm} />
+          <textarea
+            className={`${portalInputClass} md:col-span-3`}
+            placeholder="Merchant Notes"
+            rows={3}
+            value={form.merchantNotes}
+            onChange={(event) => updateForm("merchantNotes", event.target.value)}
+          />
         </div>
 
         {error ? <p className="mt-4 text-sm font-medium text-rose-700">{error}</p> : null}
@@ -547,58 +681,114 @@ function AdminResidualsContent() {
 
       <section className="mt-6 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
         <div className="border-b border-slate-300 p-5">
-          <h2 className="font-semibold text-slate-950">Recent Residual Entries</h2>
-          <p className="mt-1 text-sm text-slate-700">
-            Latest monthly entries across agents and accounts.
-          </p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="font-semibold text-slate-950">Residual Reporting by Agent</h2>
+              <p className="mt-1 text-sm text-slate-700">
+                Review each agent&apos;s residuals, equipment costs, and POB reporting fields.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[560px]">
+              <PortalSelect
+                ariaLabel="Filter residual reporting by agent"
+                value={reportAgent}
+                onValueChange={(value) => {
+                  setReportAgent(value);
+                  setRecentPage(1);
+                }}
+                options={[{ label: "All agents", value: "all" }, ...agentOptions]}
+              />
+              <PortalSelect
+                ariaLabel="Filter residual reporting by month"
+                value={reportMonth}
+                onValueChange={(value) => {
+                  setReportMonth(value);
+                  setRecentPage(1);
+                }}
+                options={reportMonthOptions}
+              />
+              <PortalSelect
+                ariaLabel="Filter residual reporting by status"
+                value={reportStatus}
+                onValueChange={(value) => {
+                  setReportStatus(value);
+                  setRecentPage(1);
+                }}
+                options={[
+                  { label: "All statuses", value: "all" },
+                  { label: "Finalized", value: "finalized" },
+                  { label: "Draft", value: "draft" },
+                ]}
+              />
+            </div>
+          </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm text-slate-900">
+          <table className="w-full min-w-[2100px] text-left text-xs text-slate-900">
             <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
               <tr>
                 <th className="p-4">Merchant</th>
-                <th>Agent</th>
-                <th>Platform</th>
-                <th>Month</th>
-                <th>Volume</th>
-                <th>Net Profit</th>
-                <th>Agent Profit</th>
-                <th>Equipment</th>
-                <th>Status</th>
+                <th className="px-3 py-3">Agent</th>
+                <th className="px-3 py-3">Platform</th>
+                <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3 text-right">GreenHub POB Buy Rate</th>
+                <th className="px-3 py-3">Agent Commission Structure</th>
+                <th className="px-3 py-3 text-right">Merchant Sales Volume</th>
+                <th className="px-3 py-3 text-right">GreenHub Net Profit</th>
+                <th className="px-3 py-3 text-right">Surcharge</th>
+                <th className="px-3 py-3 text-right">Rebate to Merchant</th>
+                <th className="px-3 py-3 text-right">Agent Profit Per Transaction</th>
+                <th className="px-3 py-3 text-right">GreenHub POB Profit Per Transaction</th>
+                <th className="px-3 py-3 text-right">Transactions per Month</th>
+                <th className="px-3 py-3 text-right">Agent Profit</th>
+                <th className="px-3 py-3 text-right">GreenHub POB Net Profit</th>
+                <th className="px-3 py-3 text-right">Equipment Cost</th>
+                <th className="px-3 py-3">Merchant Notes</th>
               </tr>
             </thead>
             <tbody>
-              {data
-                ? paginatedRows.map((residual) => (
-                    <tr key={residual.id} className="border-t border-slate-200">
-                      <td className="p-4 font-semibold text-slate-950">
-                        {accountNames.get(residual.merchant_account_id) ?? "Unknown account"}
-                      </td>
-                      <td>{agentNames.get(residual.agent_id) ?? "Unknown agent"}</td>
-                      <td>{platformNames.get(residual.platform_id ?? "") ?? "Unassigned"}</td>
-                      <td>{`${months[residual.residual_month - 1]} ${residual.residual_year}`}</td>
-                      <td>{currency(residual.monthly_sales_volume)}</td>
-                      <td>{currency(residual.greenhub_net_profit)}</td>
-                      <td>{currency(residual.agent_profit)}</td>
-                      <td>{currency(residual.equipment_cost)}</td>
-                      <td><ResidualStatus status={residual.residual_status} /></td>
-                    </tr>
-                  ))
-                : paginatedDemoRows.map((row) => (
-                    <tr key={`${row.merchant}-${row.month}`} className="border-t border-slate-200">
-                      <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
-                      <td>{row.agent}</td>
-                      <td>{row.platform}</td>
-                      <td>{row.month}</td>
-                      <td>{row.volume}</td>
-                      <td>{row.netProfit}</td>
-                      <td>{row.agentProfit}</td>
-                      <td>{row.equipment}</td>
-                      <td><ResidualStatus status={row.status.toLowerCase() as "draft" | "finalized"} /></td>
-                    </tr>
-                  ))}
+              {paginatedReportRows.map((row) => (
+                <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
+                  <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
+                  <td className="px-3 py-3">{row.agent}</td>
+                  <td className="px-3 py-3">{row.platform}</td>
+                  <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobBuyRate)}</td>
+                  <td className="px-3 py-3">{row.agentCommissionStructure}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.salesVolume)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubNetProfit)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.surcharge)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.rebate)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.profitPerTransaction)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobProfitPerTransaction)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{row.transactionsPerMonth.toLocaleString()}</td>
+                  <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobNetProfit)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
+                  <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "—"}</td>
+                </tr>
+              ))}
+              {filteredReportRows.length === 0 ? (
+                <tr>
+                  <td colSpan={17} className="px-5 py-10 text-center text-sm text-slate-600">
+                    No residuals match the selected filters.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
+        </div>
+        <div className="border-t border-slate-300 bg-slate-50 p-5">
+          <h3 className="text-sm font-semibold text-slate-950">Totals</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <TotalTile label="Total Merchant Sales Volume" value={currency(reportTotals.salesVolume)} />
+            <TotalTile label="Total GreenHub Net Profit" value={currency(reportTotals.greenhubNetProfit)} />
+            <TotalTile label="Total Transactions per Month" value={reportTotals.transactionsPerMonth.toLocaleString()} />
+            <TotalTile label="Total Agent Profit" value={currency(reportTotals.agentProfit)} />
+            <TotalTile label="Total GreenHub POB Net Profit" value={currency(reportTotals.greenhubPobNetProfit)} />
+            <TotalTile label="Total Equipment Cost" value={currency(reportTotals.equipmentCost)} />
+            <TotalTile label="Agent Profit Less Equipment" value={currency(reportTotals.agentProfit - reportTotals.equipmentCost)} />
+          </div>
         </div>
         <PortalPagination
           page={activePage}
@@ -614,9 +804,14 @@ function AdminResidualsContent() {
 
 function formFromResidual(residual: MonthlyResidual): ResidualForm {
   return {
+    agentCommissionStructure: residual.agent_commission_structure ?? "",
     agentId: residual.agent_id,
     agentProfit: inputValue(residual.agent_profit),
     equipmentCost: inputValue(residual.equipment_cost),
+    greenhubPobBuyRate: inputValue(residual.greenhub_pob_buy_rate),
+    greenhubPobNetProfit: inputValue(residual.greenhub_pob_net_profit),
+    greenhubPobProfitPerTransaction: inputValue(residual.greenhub_pob_profit_per_transaction),
+    merchantNotes: residual.merchant_notes ?? "",
     merchantAccountId: residual.merchant_account_id,
     month: months[residual.residual_month - 1] ?? "January",
     monthlySalesVolume: inputValue(residual.monthly_sales_volume),
@@ -642,6 +837,9 @@ function ResidualInput({
     ResidualForm,
     | "agentProfit"
     | "equipmentCost"
+    | "greenhubPobBuyRate"
+    | "greenhubPobNetProfit"
+    | "greenhubPobProfitPerTransaction"
     | "monthlySalesVolume"
     | "netProfit"
     | "oneTimeFees"
@@ -678,27 +876,131 @@ function ResidualStatus({ status }: { status: "draft" | "finalized" }) {
   );
 }
 
-const demoResidualRows = [
+function TotalTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-300 bg-white p-3">
+      <p className="text-xs font-medium text-slate-600">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function totalResiduals(rows: ResidualReportRow[]) {
+  return rows.reduce(
+    (totals, row) => ({
+      agentProfit: totals.agentProfit + row.agentProfit,
+      equipmentCost: totals.equipmentCost + row.equipmentCost,
+      greenhubNetProfit: totals.greenhubNetProfit + row.greenhubNetProfit,
+      greenhubPobNetProfit: totals.greenhubPobNetProfit + row.greenhubPobNetProfit,
+      salesVolume: totals.salesVolume + row.salesVolume,
+      transactionsPerMonth: totals.transactionsPerMonth + row.transactionsPerMonth,
+    }),
+    {
+      agentProfit: 0,
+      equipmentCost: 0,
+      greenhubNetProfit: 0,
+      greenhubPobNetProfit: 0,
+      salesVolume: 0,
+      transactionsPerMonth: 0,
+    }
+  );
+}
+
+type DemoResidualRow = {
+  agent: string;
+  agentCommissionStructure: string;
+  agentId: string;
+  agentProfit: string;
+  equipment: string;
+  greenhubPobBuyRate: string;
+  greenhubPobProfitPerTransaction: string;
+  merchant: string;
+  month: string;
+  netProfit: string;
+  notes: string;
+  platform: string;
+  pobNetProfit: string;
+  profitPerTransaction: string;
+  rebate: string;
+  status: "Draft" | "Finalized";
+  surcharge: string;
+  transactions: string;
+  volume: string;
+};
+
+function reportMonthValue(label: string) {
+  const [monthName, year] = label.split(" ");
+  const numericMonth = months.indexOf(monthName) + 1;
+  return numericMonth && year ? `${year}-${numericMonth}` : "unknown";
+}
+
+function demoReportRow(row: DemoResidualRow): ResidualReportRow {
+  return {
+    agent: row.agent,
+    agentCommissionStructure: row.agentCommissionStructure,
+    agentId: row.agentId,
+    agentProfit: amount(row.agentProfit),
+    equipmentCost: amount(row.equipment),
+    greenhubNetProfit: amount(row.netProfit),
+    greenhubPobBuyRate: amount(row.greenhubPobBuyRate),
+    greenhubPobNetProfit: amount(row.pobNetProfit),
+    greenhubPobProfitPerTransaction: amount(row.greenhubPobProfitPerTransaction),
+    id: `${row.merchant}-${row.month}`,
+    merchant: row.merchant,
+    merchantNotes: row.notes,
+    month: row.month,
+    monthValue: reportMonthValue(row.month),
+    platform: row.platform,
+    profitPerTransaction: amount(row.profitPerTransaction),
+    rebate: amount(row.rebate),
+    salesVolume: amount(row.volume),
+    status: row.status.toLowerCase() as "draft" | "finalized",
+    surcharge: amount(row.surcharge),
+    transactionsPerMonth: amount(row.transactions),
+  };
+}
+
+const demoResidualRows: DemoResidualRow[] = [
   {
     merchant: "Resource Group",
     agent: "Nicholas Sanchez",
+    agentId: "nick@greenhubinc.com",
     platform: "Best Rate - Nuvei",
     month: "April 2024",
+    greenhubPobBuyRate: "$3.00",
+    agentCommissionStructure: "50% net profit share",
     volume: "$54,595",
     netProfit: "$2,041.56",
+    surcharge: "$215.00",
+    rebate: "$0.00",
+    profitPerTransaction: "$3.74",
+    greenhubPobProfitPerTransaction: "$1.20",
+    transactions: "546",
     agentProfit: "$1,020.79",
+    pobNetProfit: "$655.20",
     equipment: "$250.00",
+    notes: "Clean period. Equipment deducted from payout.",
     status: "Finalized",
   },
   {
     merchant: "Urbana Cafe",
     agent: "Rob Sinn",
+    agentId: "rob@paynex.net",
     platform: "ElitePay - AUX",
     month: "April 2024",
+    greenhubPobBuyRate: "$2.75",
+    agentCommissionStructure: "45% net profit share",
     volume: "$34,220",
     netProfit: "$1,066.15",
+    surcharge: "$148.00",
+    rebate: "$35.00",
+    profitPerTransaction: "$2.91",
+    greenhubPobProfitPerTransaction: "$1.05",
+    transactions: "366",
     agentProfit: "$332.58",
+    pobNetProfit: "$384.30",
     equipment: "$200.00",
+    notes: "Draft pending final transaction review.",
     status: "Draft",
   },
 ];

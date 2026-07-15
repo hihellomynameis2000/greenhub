@@ -11,7 +11,7 @@ import { portalRequest } from "@/lib/portal/client";
 import type { AgentProfile } from "@/lib/portal/types";
 
 const initialForm = {
-  commissionRate: "20",
+  commissionNotes: "",
   email: "",
   name: "",
   role: "agent",
@@ -19,11 +19,6 @@ const initialForm = {
 };
 
 type AgentForm = typeof initialForm;
-
-function commissionLabel(value: number | string | null) {
-  const numeric = Number(value ?? 0);
-  return `${Number.isFinite(numeric) ? numeric : 0}%`;
-}
 
 export default function AdminAgentsPage() {
   return (
@@ -70,7 +65,7 @@ function AdminAgentsContent() {
     setDeleteCandidateId(null);
     setEditingId(agent.id);
     setEditForm({
-      commissionRate: String(agent.commission_rate ?? 0),
+      commissionNotes: agent.commission_notes ?? "",
       email: agent.email,
       name: agent.name,
       role: agent.role,
@@ -93,7 +88,7 @@ function AdminAgentsContent() {
       await refresh();
       showPortalToast({
         title: "Agent updated",
-        message: "The agent profile and commission rate were saved.",
+        message: "The agent profile and commission notes were saved.",
       });
     } catch (requestError) {
       setDirectoryError(
@@ -132,7 +127,7 @@ function AdminAgentsContent() {
     <>
       <PageHeader
         title="Agents"
-        subtitle="Create, manage, and assign commission rates to agents."
+        subtitle="Create, manage, and review admin-only commission notes for agents."
       />
 
       <section className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
@@ -143,7 +138,7 @@ function AdminAgentsContent() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
             Full name
             <input
@@ -175,14 +170,14 @@ function AdminAgentsContent() {
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-            Commission rate
-            <input
+            Commission rate notes
+            <textarea
               className={portalInputClass}
-              inputMode="decimal"
-              placeholder="20"
-              value={form.commissionRate}
+              placeholder="Admin-only notes. Example: varies by deal, review account-level terms."
+              rows={3}
+              value={form.commissionNotes}
               onChange={(event) =>
-                setForm((current) => ({ ...current, commissionRate: event.target.value }))
+                setForm((current) => ({ ...current, commissionNotes: event.target.value }))
               }
             />
           </label>
@@ -219,7 +214,7 @@ function AdminAgentsContent() {
         <div className="border-b border-slate-300 p-5">
           <h2 className="text-lg font-semibold text-slate-950">Agent Directory</h2>
           <p className="mt-1 text-sm text-slate-700">
-            Active portal users and their current commission settings.
+            Active portal users and internal commission rate notes.
           </p>
           {directoryError ? (
             <p className="mt-3 text-sm font-medium text-rose-700">{directoryError}</p>
@@ -233,7 +228,7 @@ function AdminAgentsContent() {
                 <th className="px-4 py-3 font-semibold">Email</th>
                 <th className="px-4 py-3 font-semibold">Role</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-5 py-3 text-right font-semibold">Commission</th>
+                <th className="px-5 py-3 font-semibold">Commission Rate Notes</th>
                 <th className="w-32 px-5 py-3 text-right font-semibold">Actions</th>
               </tr>
             </thead>
@@ -242,9 +237,9 @@ function AdminAgentsContent() {
                 const liveAgent = "commission_rate" in agent;
                 const status = liveAgent ? agent.status : agent.status.toLowerCase();
                 const role = liveAgent ? agent.role : agent.role.toLowerCase();
-                const commission = liveAgent
-                  ? commissionLabel(agent.commission_rate)
-                  : agent.commission;
+                const commissionNotes = liveAgent
+                  ? agent.commission_notes || "Account-level commission notes only."
+                  : agent.commissionNotes;
 
                 return (
                   <Fragment key={agent.email}>
@@ -263,8 +258,8 @@ function AdminAgentsContent() {
                         {status}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 text-right font-semibold tabular-nums">
-                      {commission}
+                    <td className="max-w-[360px] px-5 py-3.5 text-slate-700">
+                      <span className="line-clamp-2">{commissionNotes}</span>
                     </td>
                     <td className="px-5 py-3.5">
                       {liveAgent ? (
@@ -363,15 +358,15 @@ function AdminAgentsContent() {
                             />
                           </label>
                           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                            Commission rate
-                            <input
+                            Commission rate notes
+                            <textarea
                               className={portalInputClass}
-                              inputMode="decimal"
-                              value={editForm.commissionRate}
+                              rows={2}
+                              value={editForm.commissionNotes}
                               onChange={(event) =>
                                 setEditForm((current) => ({
                                   ...current,
-                                  commissionRate: event.target.value,
+                                  commissionNotes: event.target.value,
                                 }))
                               }
                             />

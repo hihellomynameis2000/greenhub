@@ -1,8 +1,32 @@
 export const agents = [
-  { name: "Justin Brewer", email: "justin@greenhubinc.com", role: "Admin", status: "Active", commission: "0%" },
-  { name: "Nicholas Sanchez", email: "nick@greenhubinc.com", role: "Agent", status: "Active", commission: "20%" },
-  { name: "Rob Sinn", email: "rob@paynex.net", role: "Agent", status: "Active", commission: "18%" },
-  { name: "Mark Suchy", email: "mark@greenhubinc.com", role: "Agent", status: "Active", commission: "15%" },
+  {
+    name: "Justin Brewer",
+    email: "justin@greenhubinc.com",
+    role: "Admin",
+    status: "Active",
+    commissionNotes: "Admin profile. Commission varies by account.",
+  },
+  {
+    name: "Nicholas Sanchez",
+    email: "nick@greenhubinc.com",
+    role: "Agent",
+    status: "Active",
+    commissionNotes: "Uses account-level commission structure notes.",
+  },
+  {
+    name: "Rob Sinn",
+    email: "rob@paynex.net",
+    role: "Agent",
+    status: "Active",
+    commissionNotes: "Review account-level POB and revenue share details.",
+  },
+  {
+    name: "Mark Suchy",
+    email: "mark@greenhubinc.com",
+    role: "Agent",
+    status: "Active",
+    commissionNotes: "Commission notes stored for admin review only.",
+  },
 ];
 
 export const accounts = [
@@ -48,6 +72,15 @@ export const agentResiduals = [
     residual: "$1,248",
     netProfit: "$2,840",
     equipment: "$180",
+    greenhubPobBuyRate: "$3.00",
+    agentCommissionStructure: "50% net profit share",
+    surcharge: "$240",
+    rebate: "$0",
+    profitPerTransaction: "$2.55",
+    greenhubPobProfitPerTransaction: "$1.20",
+    transactions: "489",
+    pobNetProfit: "$587",
+    notes: "Strong month. No merchant exceptions.",
   },
   {
     merchant: "Oakline Retail",
@@ -58,6 +91,15 @@ export const agentResiduals = [
     residual: "$842",
     netProfit: "$1,940",
     equipment: "$0",
+    greenhubPobBuyRate: "$2.75",
+    agentCommissionStructure: "45% net profit share",
+    surcharge: "$160",
+    rebate: "$35",
+    profitPerTransaction: "$2.30",
+    greenhubPobProfitPerTransaction: "$1.05",
+    transactions: "366",
+    pobNetProfit: "$384",
+    notes: "Rebate applied for June volume.",
   },
   {
     merchant: "Harbor Med Spa",
@@ -68,6 +110,15 @@ export const agentResiduals = [
     residual: "$420",
     netProfit: "$1,120",
     equipment: "$95",
+    greenhubPobBuyRate: "$2.50",
+    agentCommissionStructure: "Flat residual schedule",
+    surcharge: "$105",
+    rebate: "$0",
+    profitPerTransaction: "$1.90",
+    greenhubPobProfitPerTransaction: "$0.80",
+    transactions: "221",
+    pobNetProfit: "$177",
+    notes: "Equipment cost withheld this period.",
   },
 ];
 
@@ -80,6 +131,8 @@ export const platforms = [
   "Linked2Pay – Avidia",
   "Paybotx",
   "Paybotx – Fiserv",
+  "Ellacash",
+  "Greenway POB",
   "Paynex",
   "Valmar",
 ];

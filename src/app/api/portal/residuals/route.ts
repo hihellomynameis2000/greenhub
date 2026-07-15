@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   decimalValue,
   optionalString,
+  PortalApiError,
   portalErrorResponse,
   requirePortalContext,
   requiredInteger,
@@ -27,9 +28,14 @@ function residualPayload(body: Record<string, unknown>) {
 
   return {
     agent_id: requiredString(body.agentId, "Assigned agent"),
+    agent_commission_structure: optionalString(body.agentCommissionStructure),
     agent_profit: decimalValue(body.agentProfit),
     equipment_cost: decimalValue(body.equipmentCost),
     greenhub_net_profit: decimalValue(body.greenhubNetProfit),
+    greenhub_pob_buy_rate: decimalValue(body.greenhubPobBuyRate),
+    greenhub_pob_net_profit: decimalValue(body.greenhubPobNetProfit),
+    greenhub_pob_profit_per_transaction: decimalValue(body.greenhubPobProfitPerTransaction),
+    merchant_notes: optionalString(body.merchantNotes),
     merchant_account_id: requiredString(body.merchantAccountId, "Merchant account"),
     monthly_sales_volume: decimalValue(body.monthlySalesVolume),
     one_time_fees: decimalValue(body.oneTimeFees),
@@ -42,6 +48,54 @@ function residualPayload(body: Record<string, unknown>) {
     surcharge: decimalValue(body.surcharge),
     transactions_per_month: requiredInteger(body.transactionsPerMonth ?? 0, "Transactions per month"),
   };
+}
+
+const extendedResidualColumns = new Set([
+  "agent_commission_structure",
+  "greenhub_pob_buy_rate",
+  "greenhub_pob_net_profit",
+  "greenhub_pob_profit_per_transaction",
+  "merchant_notes",
+]);
+
+function stripExtendedResidualColumns(body: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(body).filter(([key]) => !extendedResidualColumns.has(key))
+  );
+}
+
+function missingResidualColumn(error: unknown) {
+  return (
+    error instanceof PortalApiError &&
+    /agent_commission_structure|greenhub_pob|merchant_notes|schema cache|column/i.test(
+      error.message
+    )
+  );
+}
+
+async function writeResidual(
+  options: {
+    body: Record<string, unknown>;
+    method: "PATCH" | "POST";
+    query?: URLSearchParams;
+  }
+) {
+  try {
+    return await supabaseRest<MonthlyResidual[]>("monthly_residuals", {
+      method: options.method,
+      prefer: "return=representation",
+      query: options.query,
+      body: options.body,
+    });
+  } catch (error) {
+    if (!missingResidualColumn(error)) throw error;
+    return supabaseRest<MonthlyResidual[]>("monthly_residuals", {
+      method: options.method,
+      prefer: "return=representation",
+      query: options.query,
+      body: stripExtendedResidualColumns(options.body),
+    });
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -73,9 +127,8 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as Record<string, unknown>;
     const payload = residualPayload(body);
 
-    const residuals = await supabaseRest<MonthlyResidual[]>("monthly_residuals", {
+    const residuals = await writeResidual({
       method: "POST",
-      prefer: "return=representation",
       body: {
         ...payload,
         created_by: context.profile.id,
@@ -102,9 +155,8 @@ export async function PATCH(request: NextRequest) {
     const payload = residualPayload(body);
     const query = new URLSearchParams({ id: `eq.${id}` });
 
-    const residuals = await supabaseRest<MonthlyResidual[]>("monthly_residuals", {
+    const residuals = await writeResidual({
       method: "PATCH",
-      prefer: "return=representation",
       query,
       body: { ...payload, updated_by: context.profile.id },
     });

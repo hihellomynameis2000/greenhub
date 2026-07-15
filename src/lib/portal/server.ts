@@ -30,7 +30,7 @@ export class PortalApiError extends Error {
 }
 
 function supabaseConfig() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -151,7 +151,7 @@ export async function requirePortalContext(
   }
 
   const query = new URLSearchParams({
-    select: "id,auth_user_id,name,email,role,status,commission_rate,created_at,updated_at",
+    select: "*",
     email: `eq.${user.email}`,
     limit: "1",
   });
