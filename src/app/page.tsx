@@ -49,6 +49,11 @@ type FormData = {
   notes: string;
   fileUrl: string;
   fileName: string;
+  portalAgentEmail: string;
+  portalAgentId: string;
+  portalAgentName: string;
+  preferredPlatform: string;
+  source: string;
 };
 
 type FieldKey = keyof FormData | "acceptance";
@@ -436,11 +441,42 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
     notes: "",
     fileUrl: "",
     fileName: "",
+    portalAgentEmail: "",
+    portalAgentId: "",
+    portalAgentName: "",
+    preferredPlatform: "",
+    source: "",
   });
 
   function update(patch: Partial<FormData>) {
     setData((d) => ({ ...d, ...patch }));
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const merchant = params.get("merchant")?.trim();
+    const email = params.get("email")?.trim();
+    const platform = params.get("platform")?.trim();
+    const agentEmail = params.get("agentEmail")?.trim();
+    const agentId = params.get("agentId")?.trim();
+    const agentName = params.get("agentName")?.trim();
+
+    if (!merchant && !email && !platform && !agentEmail && !agentId && !agentName) return;
+
+    setData((current) => ({
+      ...current,
+      dbaName: merchant || current.dbaName,
+      email: email || current.email,
+      legalName: merchant || current.legalName,
+      portalAgentEmail: agentEmail || current.portalAgentEmail,
+      portalAgentId: agentId || current.portalAgentId,
+      portalAgentName: agentName || current.portalAgentName,
+      preferredPlatform: platform || current.preferredPlatform,
+      source: agentEmail || agentId || agentName ? "partner_portal" : current.source,
+    }));
+  }, []);
 
   async function handleFile(file: File) {
     const formData = new FormData();
@@ -1046,6 +1082,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                   <ReviewRow k="Industry" v={data.industry} />
                   <ReviewRow k="Website" v={data.websiteUrl || "—"} />
                   <ReviewRow k="Gateway" v={data.gateway || "—"} />
+                  <ReviewRow k="Preferred Platform" v={data.preferredPlatform || "—"} />
                   <ReviewRow k="Contact" v={`${data.firstName} ${data.lastName}`.trim() || "—"} />
                   <ReviewRow k="Email" v={data.email || "—"} />
                   <ReviewRow k="Phone" v={data.phone || "—"} />

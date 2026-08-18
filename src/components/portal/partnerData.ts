@@ -59,7 +59,7 @@ export type CrmDeal = {
   stage: CrmStage;
 };
 
-const standardFolders: PartnerPlatformFolder[] = [
+export const standardFolders: PartnerPlatformFolder[] = [
   {
     key: "agent-buy-rate",
     name: "Agent Buy Rate",
@@ -370,3 +370,28 @@ export const platformUpdates = [
     body: "Agents can now review required ACH documents before submitting a merchant.",
   },
 ];
+
+export function folderIconForKey(folderKey: string) {
+  return standardFolders.find((folder) => folder.key === folderKey)?.icon ?? FileText;
+}
+
+export function folderSummaryForKey(folderKey: string, fallback?: string | null) {
+  return (
+    fallback ||
+    standardFolders.find((folder) => folder.key === folderKey)?.summary ||
+    "Platform resource folder."
+  );
+}
+
+export function displayPortalStatus(status?: string | null) {
+  if (status === "limited" || status === "Limited") return "Limited";
+  if (status === "restricted" || status === "Restricted") return "Restricted";
+  return "Active";
+}
+
+export function statusClassName(status?: string | null) {
+  const display = displayPortalStatus(status);
+  if (display === "Active") return "bg-emerald-100 text-emerald-900";
+  if (display === "Limited") return "bg-amber-100 text-amber-900";
+  return "bg-rose-100 text-rose-800";
+}

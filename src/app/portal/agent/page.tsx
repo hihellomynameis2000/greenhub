@@ -95,8 +95,29 @@ function AgentDashboardContent() {
     : data
       ? data.residuals.reduce((total, row) => total + amount(row.equipment_cost), 0)
       : 275;
-  const submittedDeals = crmDeals.filter((deal) => deal.stage === "Submitted").length;
-  const approvedDeals = crmDeals.filter((deal) => deal.stage === "Approved").length;
+  const liveDeals = data?.portalDeals.length ? data.portalDeals : null;
+  const submittedDeals = liveDeals
+    ? liveDeals.filter((deal) => deal.stage === "submitted").length
+    : crmDeals.filter((deal) => deal.stage === "Submitted").length;
+  const approvedDeals = liveDeals
+    ? liveDeals.filter((deal) => deal.stage === "approved").length
+    : crmDeals.filter((deal) => deal.stage === "Approved").length;
+  const openDealCount = liveDeals
+    ? liveDeals.filter((deal) => !["approved", "declined"].includes(deal.stage)).length
+    : crmDeals.length - approvedDeals;
+  const dashboardUpdates = data?.platformUpdates.length
+    ? data.platformUpdates.map((update) => ({
+        body: update.message,
+        date: new Date(update.published_at ?? update.created_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+        title: update.title,
+      }))
+    : platformUpdates;
+  const platformCount = data?.partnerPlatforms.length || partnerPlatforms.length;
+  const nextFollowUp = liveDeals?.find((deal) => deal.next_follow_up)?.next_follow_up ?? crmDeals[0]?.nextFollowUp ?? "Today";
 
   return (
     <>
@@ -106,7 +127,7 @@ function AgentDashboardContent() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card title="Open CRM Deals" value={String(crmDeals.length - approvedDeals)} sub="Active pipeline" tone="accent" />
+        <Card title="Open CRM Deals" value={String(openDealCount)} sub="Active pipeline" tone="accent" />
         <Card title="Submitted Deals" value={String(submittedDeals)} sub="Underwriting review" />
         <Card
           title="Monthly Residual"
@@ -168,7 +189,7 @@ function AgentDashboardContent() {
             <Bell aria-hidden="true" className="h-5 w-5 text-slate-500" />
           </div>
           <div className="mt-4 space-y-3">
-            {platformUpdates.map((update) => (
+            {dashboardUpdates.map((update) => (
               <div key={update.title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold text-slate-950">{update.title}</h3>
@@ -190,11 +211,11 @@ function AgentDashboardContent() {
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-            {partnerPlatforms.length} platforms available
+            {platformCount} platforms available
           </span>
         </div>
         <div className="grid divide-y divide-slate-200 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-          <SnapshotTile icon={BriefcaseBusiness} label="Next CRM Follow-Up" value={crmDeals[0]?.nextFollowUp ?? "Today"} />
+          <SnapshotTile icon={BriefcaseBusiness} label="Next CRM Follow-Up" value={nextFollowUp} />
           <SnapshotTile icon={Building2} label="Assigned Accounts" value={data ? String(data.accounts.length) : "3"} />
           <SnapshotTile icon={ReceiptText} label="Finalized Residual Rows" value={data ? String(data.residuals.length) : String(agentResiduals.length)} />
         </div>

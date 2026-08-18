@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, ClipboardList, Send } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { partnerPlatforms } from "@/components/portal/partnerData";
+import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
-import { PortalActionButton } from "@/components/portal/PortalToast";
+import { showPortalToast } from "@/components/portal/PortalToast";
+import { portalRequest } from "@/lib/portal/client";
 
 const intakeSteps = [
   "Company",
@@ -25,16 +27,95 @@ const initialForm = {
   contactName: "",
   estimatedVolume: "",
   merchantName: "",
+  nextFollowUp: "",
   notes: "",
   platform: "",
   priority: "Standard",
 };
 
 export default function AgentSubmitDealPage() {
-  const [form, setForm] = useState(initialForm);
-
   return (
     <PortalShell role="agent">
+      <AgentSubmitDealContent />
+    </PortalShell>
+  );
+}
+
+function AgentSubmitDealContent() {
+  const { data, refresh } = usePortalData();
+  const [form, setForm] = useState(initialForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const platformOptions = data?.partnerPlatforms.length
+    ? data.partnerPlatforms.map((platform) => ({
+        label: platform.name,
+        value: platform.id,
+      }))
+    : partnerPlatforms.map((platform) => ({ label: platform.name, value: platform.name }));
+  const applicationHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (form.merchantName.trim()) params.set("merchant", form.merchantName.trim());
+    if (form.contactEmail.trim()) params.set("email", form.contactEmail.trim());
+    if (form.platform.trim()) {
+      const platformName = platformOptions.find((platform) => platform.value === form.platform)?.label ?? form.platform;
+      params.set("platform", platformName);
+    }
+    if (data?.profile.email) params.set("agentEmail", data.profile.email);
+    if (data?.profile.id) params.set("agentId", data.profile.id);
+    if (data?.profile.name) params.set("agentName", data.profile.name);
+    const query = params.toString();
+    return query ? `/?${query}` : "/";
+  }, [
+    data?.profile.email,
+    data?.profile.id,
+    data?.profile.name,
+    form.contactEmail,
+    form.merchantName,
+    form.platform,
+    platformOptions,
+  ]);
+
+  async function saveDealDraft() {
+    setSaving(true);
+    setError(null);
+
+    try {
+      if (!form.merchantName.trim()) {
+        throw new Error("Merchant name is required.");
+      }
+
+      if (data) {
+        await portalRequest("/api/portal/deals", {
+          method: "POST",
+          body: JSON.stringify({
+            contactEmail: form.contactEmail,
+            contactName: form.contactName,
+            estimatedVolume: form.estimatedVolume,
+            lastActivity: "Deal draft created in partner portal",
+            merchantName: form.merchantName,
+            nextFollowUp: form.nextFollowUp,
+            notes: form.notes,
+            platformId: form.platform,
+            priority: form.priority.toLowerCase().replace(" priority", ""),
+            stage: "new_lead",
+          }),
+        });
+        await refresh();
+      }
+
+      showPortalToast({
+        title: "Deal draft saved",
+        message: "The agent CRM draft is ready for the full application flow.",
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The deal draft could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
       <PageHeader
         title="Submit New Deal"
         subtitle="Prepare a merchant opportunity and continue into the GreenHub application workflow."
@@ -49,7 +130,7 @@ export default function AgentSubmitDealPage() {
             <div>
               <h2 className="text-lg font-semibold text-slate-950">Deal Intake</h2>
               <p className="mt-1 text-sm leading-6 text-slate-700">
-                This frontend captures the CRM handoff and routes agents into the existing merchant application.
+                Capture the first pass details, then continue to the full merchant application.
               </p>
             </div>
           </div>
@@ -71,7 +152,7 @@ export default function AgentSubmitDealPage() {
                 onValueChange={(platform) => setForm((current) => ({ ...current, platform }))}
                 options={[
                   { disabled: true, label: "Select platform", value: "" },
-                  ...partnerPlatforms.map((platform) => ({ label: platform.name, value: platform.name })),
+                  ...platformOptions,
                 ]}
               />
             </label>
@@ -115,6 +196,15 @@ export default function AgentSubmitDealPage() {
                 ]}
               />
             </label>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+              Next follow-up
+              <input
+                className={portalInputClass}
+                placeholder="Tomorrow, 10:00 AM"
+                value={form.nextFollowUp}
+                onChange={(event) => setForm((current) => ({ ...current, nextFollowUp: event.target.value }))}
+              />
+            </label>
             <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">
               Agent notes
               <textarea
@@ -127,18 +217,20 @@ export default function AgentSubmitDealPage() {
             </label>
           </div>
 
+          {error ? <p className="mt-4 text-sm font-medium text-rose-700">{error}</p> : null}
+
           <div className="mt-5 flex flex-wrap gap-3">
-            <PortalActionButton
+            <button
               type="button"
-              toastTitle="Deal draft prepared"
-              toastMessage="The CRM intake draft is ready for the full application flow."
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900"
+              disabled={saving}
+              onClick={() => void saveDealDraft()}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-              Save CRM Draft
-            </PortalActionButton>
+              {saving ? "Saving..." : "Save CRM Draft"}
+            </button>
             <Link
-              href="/"
+              href={applicationHref}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100"
             >
               Continue to Full Application
@@ -166,13 +258,13 @@ export default function AgentSubmitDealPage() {
           </div>
 
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5">
-            <h2 className="text-sm font-semibold text-emerald-950">Production Wiring</h2>
+            <h2 className="text-sm font-semibold text-emerald-950">Agent Ownership</h2>
             <p className="mt-2 text-sm leading-6 text-emerald-900">
-              Next step is to pass the signed-in agent ID into the existing lead submission so Salesforce can auto-assign ownership.
+              Saved drafts stay attached to the signed-in agent and appear in the CRM pipeline.
             </p>
           </div>
         </aside>
       </section>
-    </PortalShell>
+    </>
   );
 }

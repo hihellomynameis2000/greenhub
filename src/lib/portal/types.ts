@@ -15,10 +15,112 @@ export type AgentProfile = {
 };
 
 export type Platform = {
+  category?: string | null;
   created_at: string;
+  description?: string | null;
+  id: string;
+  is_active: boolean;
+  last_updated_at?: string | null;
+  name: string;
+  portal_status?: "active" | "limited" | "restricted" | null;
+  slug?: string | null;
+  sort_order?: number | null;
+  updated_at?: string | null;
+};
+
+export type PlatformResourceFolder = {
+  created_at: string;
+  description: string | null;
+  folder_key: string;
   id: string;
   is_active: boolean;
   name: string;
+  platform_id: string;
+  sort_order: number;
+  updated_at: string;
+};
+
+export type PlatformResource = {
+  created_at: string;
+  created_by: string | null;
+  description: string | null;
+  external_url: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  folder_id: string;
+  id: string;
+  is_active: boolean;
+  platform_id: string;
+  resource_type: "document" | "link" | "note";
+  sort_order: number;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  title: string;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type PlatformFolderWithResources = PlatformResourceFolder & {
+  platform_resources?: PlatformResource[];
+  resources: PlatformResource[];
+};
+
+export type PartnerPlatformRecord = Platform & {
+  folders: PlatformFolderWithResources[];
+  platform_resource_folders?: PlatformFolderWithResources[];
+  resource_count: number;
+};
+
+export type AgentPlatformAccess = {
+  agent_id: string;
+  can_view: boolean;
+  created_at: string;
+  created_by: string | null;
+  folder_id: string;
+  id: string;
+  platform_id: string;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type PlatformUpdate = {
+  audience: "all" | "admin" | "agent";
+  created_at: string;
+  created_by: string | null;
+  id: string;
+  message: string;
+  platform_id: string | null;
+  published_at: string | null;
+  title: string;
+};
+
+export type PortalDealStage =
+  | "new_lead"
+  | "contacted"
+  | "application_sent"
+  | "submitted"
+  | "approved"
+  | "declined";
+
+export type PortalDeal = {
+  agent_id: string;
+  contact_email: string | null;
+  contact_name: string | null;
+  created_at: string;
+  created_by: string | null;
+  estimated_volume: NumericValue;
+  id: string;
+  last_activity: string | null;
+  merchant_application_id: string | null;
+  merchant_name: string;
+  next_follow_up: string | null;
+  notes: string | null;
+  platform_id: string | null;
+  priority: "standard" | "high" | "escalated";
+  salesforce_status: string | null;
+  stage: PortalDealStage;
+  updated_at: string;
+  updated_by: string | null;
 };
 
 export type MerchantAccount = {
@@ -106,7 +208,11 @@ export type PortalBootstrap = {
   lifetimeSummary: AgentLifetimeSummary | null;
   monthlySummaries: AgentMonthlySummary[];
   notifications: ResidualNotification[];
+  partnerPlatforms: PartnerPlatformRecord[];
+  platformAccess: AgentPlatformAccess[];
+  platformUpdates: PlatformUpdate[];
   platforms: Platform[];
   profile: AgentProfile;
+  portalDeals: PortalDeal[];
   residuals: MonthlyResidual[];
 };

@@ -1,27 +1,73 @@
 "use client";
 
 import { Check, FolderLock, LockKeyhole, Save, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { agents as demoAgents } from "@/components/portal/mockData";
-import { partnerPlatforms, type PlatformFolderKey } from "@/components/portal/partnerData";
+import {
+  displayPortalStatus,
+  folderIconForKey,
+  partnerPlatforms,
+  type PartnerPlatform,
+} from "@/components/portal/partnerData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PageHeader, PortalShell } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
-import { PortalActionButton } from "@/components/portal/PortalToast";
+import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
+import { portalRequest } from "@/lib/portal/client";
+import type { AgentProfile, PartnerPlatformRecord, PlatformFolderWithResources } from "@/lib/portal/types";
 
 type AccessMap = Record<string, Record<string, boolean>>;
+type PlatformRow = PartnerPlatform | PartnerPlatformRecord;
+type AgentRow =
+  | AgentProfile
+  | {
+      commissionNotes: string;
+      email: string;
+      name: string;
+      role: string;
+      status: string;
+    };
+type FolderRow = PartnerPlatform["folders"][number] | PlatformFolderWithResources;
 
-function initialAccessMap() {
+function platformId(platform: PlatformRow) {
+  return "id" in platform ? platform.id : platform.slug;
+}
+
+function folderId(folder: FolderRow) {
+  return "id" in folder ? folder.id : folder.key;
+}
+
+function folderKey(folder: FolderRow) {
+  return "folder_key" in folder ? folder.folder_key : folder.key;
+}
+
+function agentId(agent: AgentRow) {
+  return "id" in agent ? agent.id : agent.email;
+}
+
+function defaultAllowed(platform: PlatformRow, folder: FolderRow) {
+  const status = "status" in platform
+    ? platform.status
+    : displayPortalStatus(platform.portal_status);
+  return status !== "Restricted" && folderKey(folder) !== "schedule-a";
+}
+
+function buildAccessMap(platforms: PlatformRow[], agents: AgentRow[], liveAccess: { agent_id: string; can_view: boolean; folder_id: string }[] = []) {
+  const explicit = new Map(liveAccess.map((row) => [`${row.agent_id}:${row.folder_id}`, row.can_view]));
   const map: AccessMap = {};
-  for (const agent of demoAgents.filter((agent) => agent.role === "Agent")) {
-    map[agent.email] = {};
-    for (const platform of partnerPlatforms) {
+
+  for (const agent of agents) {
+    const currentAgentId = agentId(agent);
+    map[currentAgentId] = {};
+    for (const platform of platforms) {
       for (const folder of platform.folders) {
-        map[agent.email][`${platform.slug}:${folder.key}`] =
-          platform.status !== "Restricted" && folder.key !== "schedule-a";
+        const key = `${platformId(platform)}:${folderId(folder)}`;
+        map[currentAgentId][key] =
+          explicit.get(`${currentAgentId}:${folderId(folder)}`) ?? defaultAllowed(platform, folder);
       }
     }
   }
+
   return map;
 }
 
@@ -34,11 +80,31 @@ export default function AdminFolderAccessPage() {
 }
 
 function AdminFolderAccessContent() {
-  const { data } = usePortalData();
-  const agents = data?.agents.filter((agent) => agent.role === "agent") ?? demoAgents.filter((agent) => agent.role === "Agent");
-  const [platformSlug, setPlatformSlug] = useState(partnerPlatforms[0]?.slug ?? "");
-  const [access, setAccess] = useState<AccessMap>(initialAccessMap);
-  const selectedPlatform = partnerPlatforms.find((platform) => platform.slug === platformSlug) ?? partnerPlatforms[0];
+  const { data, refresh } = usePortalData();
+  const liveMode = Boolean(data?.partnerPlatforms.length);
+  const agents: AgentRow[] = useMemo(
+    () => data?.agents.filter((agent) => agent.role === "agent") ?? demoAgents.filter((agent) => agent.role === "Agent"),
+    [data?.agents]
+  );
+  const platforms: PlatformRow[] = useMemo(
+    () => (liveMode ? data!.partnerPlatforms : partnerPlatforms),
+    [data, liveMode]
+  );
+  const [selectedPlatformId, setSelectedPlatformId] = useState(platforms[0] ? platformId(platforms[0]) : "");
+  const [access, setAccess] = useState<AccessMap>(() => buildAccessMap(platforms, agents, data?.platformAccess ?? []));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!platforms.length) return;
+    setSelectedPlatformId((current) =>
+      platforms.some((platform) => platformId(platform) === current) ? current : platformId(platforms[0])
+    );
+    setAccess(buildAccessMap(platforms, agents, data?.platformAccess ?? []));
+  }, [agents, data?.platformAccess, platforms]);
+
+  const selectedPlatform =
+    platforms.find((platform) => platformId(platform) === selectedPlatformId) ?? platforms[0];
   const folders = selectedPlatform?.folders ?? [];
 
   const accessSummary = useMemo(() => {
@@ -46,31 +112,66 @@ function AdminFolderAccessContent() {
     const allowed = agents.reduce(
       (count, agent) =>
         count +
-        folders.filter((folder) => access[agent.email]?.[`${selectedPlatform.slug}:${folder.key}`]).length,
+        folders.filter((folder) => access[agentId(agent)]?.[`${platformId(selectedPlatform)}:${folderId(folder)}`]).length,
       0
     );
     return { allowed, total };
   }, [access, agents, folders, selectedPlatform]);
 
-  function toggleAccess(agentEmail: string, folderKey: PlatformFolderKey) {
-    const key = `${selectedPlatform.slug}:${folderKey}`;
+  function toggleAccess(currentAgentId: string, folder: FolderRow) {
+    const key = `${platformId(selectedPlatform)}:${folderId(folder)}`;
     setAccess((current) => ({
       ...current,
-      [agentEmail]: {
-        ...current[agentEmail],
-        [key]: !current[agentEmail]?.[key],
+      [currentAgentId]: {
+        ...current[currentAgentId],
+        [key]: !current[currentAgentId]?.[key],
       },
     }));
   }
 
-  function setAgentAccess(agentEmail: string, allowed: boolean) {
+  function setAgentAccess(currentAgentId: string, allowed: boolean) {
     setAccess((current) => ({
       ...current,
-      [agentEmail]: {
-        ...current[agentEmail],
-        ...Object.fromEntries(folders.map((folder) => [`${selectedPlatform.slug}:${folder.key}`, allowed])),
+      [currentAgentId]: {
+        ...current[currentAgentId],
+        ...Object.fromEntries(folders.map((folder) => [`${platformId(selectedPlatform)}:${folderId(folder)}`, allowed])),
       },
     }));
+  }
+
+  async function saveAccessRules() {
+    setSaving(true);
+    setError(null);
+
+    try {
+      if (data && "id" in selectedPlatform) {
+        await portalRequest("/api/portal/partner/access", {
+          method: "POST",
+          body: JSON.stringify({
+            rules: agents.flatMap((agent) =>
+              folders
+                .filter((folder): folder is PlatformFolderWithResources => "id" in folder)
+                .map((folder) => ({
+                  agentId: agentId(agent),
+                  canView: Boolean(access[agentId(agent)]?.[`${selectedPlatform.id}:${folder.id}`]),
+                  folderId: folder.id,
+                  platformId: selectedPlatform.id,
+                }))
+            ),
+          }),
+        });
+        await refresh();
+      }
+
+      showPortalToast({
+        title: "Access rules saved",
+        message: "Folder visibility rules were saved.",
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Folder access could not be saved.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -79,6 +180,12 @@ function AdminFolderAccessContent() {
         title="Folder Access"
         subtitle="Control which platform folders each agent can view inside the partner portal."
       />
+
+      {error ? (
+        <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+          {error}
+        </div>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -95,11 +202,11 @@ function AdminFolderAccessContent() {
             <div className="w-full lg:w-72">
               <PortalSelect
                 ariaLabel="Select platform for folder access"
-                value={platformSlug}
-                onValueChange={setPlatformSlug}
-                options={partnerPlatforms.map((platform) => ({
+                value={selectedPlatformId}
+                onValueChange={setSelectedPlatformId}
+                options={platforms.map((platform) => ({
                   label: platform.name,
-                  value: platform.slug,
+                  value: platformId(platform),
                 }))}
               />
             </div>
@@ -111,7 +218,7 @@ function AdminFolderAccessContent() {
                 <tr>
                   <th className="px-5 py-3 font-semibold">Agent</th>
                   {folders.map((folder) => (
-                    <th key={folder.key} className="px-3 py-3 text-center font-semibold">
+                    <th key={folderId(folder)} className="px-3 py-3 text-center font-semibold">
                       {folder.name}
                     </th>
                   ))}
@@ -119,69 +226,75 @@ function AdminFolderAccessContent() {
                 </tr>
               </thead>
               <tbody>
-                {agents.map((agent) => (
-                  <tr key={agent.email} className="border-t border-slate-200 hover:bg-slate-50">
-                    <td className="px-5 py-3.5">
-                      <p className="font-semibold text-slate-950">{agent.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">{agent.email}</p>
-                    </td>
-                    {folders.map((folder) => {
-                      const allowed = Boolean(access[agent.email]?.[`${selectedPlatform.slug}:${folder.key}`]);
+                {agents.map((agent) => {
+                  const currentAgentId = agentId(agent);
 
-                      return (
-                        <td key={folder.key} className="px-3 py-3.5 text-center">
+                  return (
+                    <tr key={currentAgentId} className="border-t border-slate-200 hover:bg-slate-50">
+                      <td className="px-5 py-3.5">
+                        <p className="font-semibold text-slate-950">{agent.name}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{agent.email}</p>
+                      </td>
+                      {folders.map((folder) => {
+                        const allowed = Boolean(access[currentAgentId]?.[`${platformId(selectedPlatform)}:${folderId(folder)}`]);
+
+                        return (
+                          <td key={folderId(folder)} className="px-3 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleAccess(currentAgentId, folder)}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                allowed
+                                  ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                  : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                              }`}
+                              aria-label={`${allowed ? "Remove" : "Allow"} ${folder.name} access for ${agent.name}`}
+                              title={allowed ? "Allowed" : "Restricted"}
+                            >
+                              {allowed ? (
+                                <Check aria-hidden="true" className="h-4 w-4" />
+                              ) : (
+                                <X aria-hidden="true" className="h-4 w-4" />
+                              )}
+                            </button>
+                          </td>
+                        );
+                      })}
+                      <td className="px-5 py-3.5">
+                        <div className="flex justify-end gap-2">
                           <button
                             type="button"
-                            onClick={() => toggleAccess(agent.email, folder.key)}
-                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                              allowed
-                                ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-                                : "bg-slate-100 text-slate-400 hover:bg-slate-200"
-                            }`}
-                            aria-label={`${allowed ? "Remove" : "Allow"} ${folder.name} access for ${agent.name}`}
-                            title={allowed ? "Allowed" : "Restricted"}
+                            onClick={() => setAgentAccess(currentAgentId, true)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
                           >
-                            {allowed ? (
-                              <Check aria-hidden="true" className="h-4 w-4" />
-                            ) : (
-                              <X aria-hidden="true" className="h-4 w-4" />
-                            )}
+                            Allow all
                           </button>
-                        </td>
-                      );
-                    })}
-                    <td className="px-5 py-3.5">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setAgentAccess(agent.email, true)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-                        >
-                          Allow all
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAgentAccess(agent.email, false)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-                        >
-                          Restrict all
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <button
+                            type="button"
+                            onClick={() => setAgentAccess(currentAgentId, false)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                          >
+                            Restrict all
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           <PortalActionButton
             type="button"
+            disabled={saving}
+            onClick={saveAccessRules}
             toastTitle="Access rules saved"
-            toastMessage="Folder visibility rules were saved in the portal preview."
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+            toastMessage="Folder visibility rules were saved."
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Save aria-hidden="true" className="h-4 w-4" />
-            Save Access Rules
+            {saving ? "Saving..." : "Save Access Rules"}
           </PortalActionButton>
         </div>
 
@@ -191,19 +304,19 @@ function AdminFolderAccessContent() {
             <h2 className="text-lg font-semibold text-slate-950">Access Summary</h2>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-700">
-            {selectedPlatform.name} has {folders.length} folder types. Current preview allows{" "}
+            {selectedPlatform.name} has {folders.length} folder types. Current rules allow{" "}
             <span className="font-semibold text-slate-950">{accessSummary.allowed}</span> of{" "}
             <span className="font-semibold text-slate-950">{accessSummary.total}</span> agent-folder permissions.
           </p>
           <div className="mt-5 space-y-3">
             {folders.map((folder) => {
               const allowedCount = agents.filter(
-                (agent) => access[agent.email]?.[`${selectedPlatform.slug}:${folder.key}`]
+                (agent) => access[agentId(agent)]?.[`${platformId(selectedPlatform)}:${folderId(folder)}`]
               ).length;
-              const Icon = folder.icon;
+              const Icon = "icon" in folder ? folder.icon : folderIconForKey(folderKey(folder));
 
               return (
-                <div key={folder.key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div key={folderId(folder)} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <Icon aria-hidden="true" className="h-4 w-4 text-slate-600" strokeWidth={1.8} />

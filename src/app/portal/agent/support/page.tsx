@@ -3,11 +3,33 @@
 import { AlertTriangle, ArrowRight, LifeBuoy, Mail, PhoneCall } from "lucide-react";
 import Link from "next/link";
 import { platformUpdates, supportContacts } from "@/components/portal/partnerData";
+import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PageHeader, PortalShell } from "@/components/portal/PortalShell";
 
 export default function AgentSupportPage() {
   return (
     <PortalShell role="agent">
+      <AgentSupportContent />
+    </PortalShell>
+  );
+}
+
+function AgentSupportContent() {
+  const { data } = usePortalData();
+  const updates = data?.platformUpdates.length
+    ? data.platformUpdates.map((update) => ({
+        body: update.message,
+        date: new Date(update.published_at ?? update.created_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+        title: update.title,
+      }))
+    : platformUpdates;
+
+  return (
+    <>
       <PageHeader
         title="Agent Support"
         subtitle="Processing support contacts, escalation paths, program alerts, and internal compliance notes."
@@ -45,7 +67,7 @@ export default function AgentSupportPage() {
             </p>
           </div>
           <div className="divide-y divide-slate-200">
-            {platformUpdates.map((update) => (
+            {updates.map((update) => (
               <article key={update.title} className="p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-950">{update.title}</h3>
@@ -71,6 +93,6 @@ export default function AgentSupportPage() {
           </Link>
         </aside>
       </section>
-    </PortalShell>
+    </>
   );
 }

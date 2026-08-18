@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  PortalApiError,
   portalErrorResponse,
   requirePortalContext,
   supabaseRest,
 } from "@/lib/portal/server";
+import { assertPartnerLibraryAvailable, fetchPartnerLibrary, visibleDealQuery } from "@/lib/portal/partner";
 import type {
   AgentLifetimeSummary,
   AgentMonthlySummary,
   AgentProfile,
+  AgentPlatformAccess,
   MerchantAccount,
   MonthlyResidual,
+  PartnerPlatformRecord,
   Platform,
+  PlatformUpdate,
   PortalBootstrap,
+  PortalDeal,
   ResidualNotification,
 } from "@/lib/portal/types";
 
@@ -74,14 +80,50 @@ export async function GET(request: NextRequest) {
           : Promise.resolve([]),
       ]);
 
+    let partnerPlatforms: PartnerPlatformRecord[] = [];
+    let platformAccess: AgentPlatformAccess[] = [];
+    let platformUpdates: PlatformUpdate[] = [];
+    let portalDeals: PortalDeal[] = [];
+
+    try {
+      const library = await fetchPartnerLibrary(context);
+      partnerPlatforms = library.partnerPlatforms;
+      platformAccess = library.platformAccess;
+
+      const updateQuery = new URLSearchParams({
+        select: "*",
+        order: "created_at.desc",
+        limit: "12",
+        or: `(audience.eq.all,audience.eq.${context.profile.role})`,
+      });
+      const [updates, deals] = await Promise.all([
+        supabaseRest<PlatformUpdate[]>("platform_updates", { query: updateQuery }),
+        supabaseRest<PortalDeal[]>("portal_deals", { query: visibleDealQuery(context) }),
+      ]);
+      platformUpdates = updates;
+      portalDeals = deals;
+    } catch (error) {
+      try {
+        assertPartnerLibraryAvailable(error);
+      } catch (partnerError) {
+        if (!(partnerError instanceof PortalApiError) || partnerError.status !== 503) {
+          throw partnerError;
+        }
+      }
+    }
+
     const response: PortalBootstrap = {
       accounts,
       agents,
       lifetimeSummary: lifetimeSummaries[0] ?? null,
       monthlySummaries,
       notifications,
+      partnerPlatforms,
+      platformAccess,
+      platformUpdates,
       platforms,
       profile: context.profile,
+      portalDeals,
       residuals,
     };
 

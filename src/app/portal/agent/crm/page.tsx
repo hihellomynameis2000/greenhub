@@ -1,9 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarClock, CheckCircle2, CircleDashed, Send, Users } from "lucide-react";
+import { ArrowRight, CalendarClock, CheckCircle2, CircleDashed, Send } from "lucide-react";
 import { crmDeals, crmStages } from "@/components/portal/partnerData";
+import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { Card, PageHeader, PortalShell } from "@/components/portal/PortalShell";
+import type { PortalDeal, PortalDealStage } from "@/lib/portal/types";
+
+type DealRow = {
+  agent: string;
+  contact: string;
+  email: string;
+  estimatedVolume: number;
+  lastActivity: string;
+  merchant: string;
+  nextFollowUp: string;
+  platform: string;
+  stage: string;
+};
 
 function money(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -20,15 +34,59 @@ function stageTone(stage: string) {
   return "bg-slate-100 text-slate-700";
 }
 
-export default function AgentCrmPage() {
-  const openDeals = crmDeals.filter((deal) => !["Approved", "Declined"].includes(deal.stage));
-  const submittedDeals = crmDeals.filter((deal) => deal.stage === "Submitted");
-  const approvedDeals = crmDeals.filter((deal) => deal.stage === "Approved");
-  const dueToday = crmDeals.filter((deal) => deal.nextFollowUp.toLowerCase().includes("today"));
-  const totalVolume = openDeals.reduce((total, deal) => total + deal.estimatedVolume, 0);
+function stageLabel(stage: PortalDealStage) {
+  const labels: Record<PortalDealStage, string> = {
+    application_sent: "Application Sent",
+    approved: "Approved",
+    contacted: "Contacted",
+    declined: "Declined",
+    new_lead: "New Lead",
+    submitted: "Submitted",
+  };
+  return labels[stage];
+}
 
+function numberValue(value: number | string | null) {
+  if (typeof value === "number") return value;
+  const parsed = Number(String(value ?? 0).replace(/[$,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function liveDealRows(deals: PortalDeal[], platformNames: Map<string, string>, agentName: string): DealRow[] {
+  return deals.map((deal) => ({
+    agent: agentName,
+    contact: deal.contact_name || "Merchant contact",
+    email: deal.contact_email || "",
+    estimatedVolume: numberValue(deal.estimated_volume),
+    lastActivity: deal.last_activity || "CRM activity updated",
+    merchant: deal.merchant_name,
+    nextFollowUp: deal.next_follow_up || "No follow-up set",
+    platform: platformNames.get(deal.platform_id ?? "") ?? "Unassigned",
+    stage: stageLabel(deal.stage),
+  }));
+}
+
+export default function AgentCrmPage() {
   return (
     <PortalShell role="agent">
+      <AgentCrmContent />
+    </PortalShell>
+  );
+}
+
+function AgentCrmContent() {
+  const { data } = usePortalData();
+  const platformNames = new Map(data?.platforms.map((platform) => [platform.id, platform.name]) ?? []);
+  const deals: DealRow[] = data?.portalDeals.length
+    ? liveDealRows(data.portalDeals, platformNames, data.profile.name)
+    : crmDeals;
+  const openDeals = deals.filter((deal) => !["Approved", "Declined"].includes(deal.stage));
+  const submittedDeals = deals.filter((deal) => deal.stage === "Submitted");
+  const approvedDeals = deals.filter((deal) => deal.stage === "Approved");
+  const dueToday = deals.filter((deal) => deal.nextFollowUp.toLowerCase().includes("today"));
+
+  return (
+    <>
       <PageHeader
         title="Agent CRM"
         subtitle="Track merchant opportunities, follow-ups, platform fit, and deal submission status."
@@ -38,7 +96,7 @@ export default function AgentCrmPage() {
         <Card title="Open Leads" value={String(openDeals.length)} sub="Active opportunities" tone="accent" />
         <Card title="Submitted Deals" value={String(submittedDeals.length)} sub="Currently in review" />
         <Card title="Approved This Month" value={String(approvedDeals.length)} sub="Ready for onboarding" />
-        <Card title="Pipeline Volume" value={money(totalVolume)} sub="Estimated monthly volume" />
+        <Card title="Follow-ups Due" value={String(dueToday.length)} sub="Needs agent action" />
       </div>
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -60,19 +118,19 @@ export default function AgentCrmPage() {
 
         <div className="mt-5 grid gap-3 xl:grid-cols-6">
           {crmStages.map((stage) => {
-            const deals = crmDeals.filter((deal) => deal.stage === stage);
+            const stageDeals = deals.filter((deal) => deal.stage === stage);
 
             return (
               <div key={stage} className="rounded-lg border border-slate-200 bg-slate-50">
                 <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2.5">
                   <h3 className="text-sm font-semibold text-slate-950">{stage}</h3>
                   <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    {deals.length}
+                    {stageDeals.length}
                   </span>
                 </div>
                 <div className="space-y-2 p-2">
-                  {deals.length ? (
-                    deals.map((deal) => (
+                  {stageDeals.length ? (
+                    stageDeals.map((deal) => (
                       <article key={deal.merchant} className="rounded-lg border border-slate-200 bg-white p-3">
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="text-sm font-semibold text-slate-950">{deal.merchant}</h4>
@@ -121,7 +179,7 @@ export default function AgentCrmPage() {
                 </tr>
               </thead>
               <tbody>
-                {crmDeals.map((deal) => (
+                {deals.map((deal) => (
                   <tr key={deal.merchant} className="border-t border-slate-200 hover:bg-slate-50">
                     <td className="px-5 py-3.5 font-semibold text-slate-950">{deal.merchant}</td>
                     <td className="px-4 py-3.5">
@@ -179,6 +237,6 @@ export default function AgentCrmPage() {
           </Link>
         </div>
       </section>
-    </PortalShell>
+    </>
   );
 }

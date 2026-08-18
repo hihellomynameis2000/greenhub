@@ -40,6 +40,12 @@ type LeadPayload = {
   keyedPct?: string | number;
   notes?: string;
   fileUrl?: string;
+  portalAgentEmail?: string;
+  portalAgentId?: string;
+  portalAgentName?: string;
+  portalDealId?: string;
+  preferredPlatform?: string;
+  source?: string;
 };
 
 const SALESFORCE_WEBTOLEAD_URL =
@@ -47,6 +53,12 @@ const SALESFORCE_WEBTOLEAD_URL =
 
 function buildSalesforceDescription(body: LeadPayload): string {
   const parts = [
+    toText(body.source) ? `Source: ${toText(body.source)}` : "",
+    toText(body.portalAgentName) ? `Portal Agent: ${toText(body.portalAgentName)}` : "",
+    toText(body.portalAgentEmail) ? `Portal Agent Email: ${toText(body.portalAgentEmail)}` : "",
+    toText(body.portalAgentId) ? `Portal Agent ID: ${toText(body.portalAgentId)}` : "",
+    toText(body.portalDealId) ? `Portal Deal ID: ${toText(body.portalDealId)}` : "",
+    toText(body.preferredPlatform) ? `Preferred Platform: ${toText(body.preferredPlatform)}` : "",
     toText(body.notes) ? `Notes: ${toText(body.notes)}` : "",
     toText(body.fileUrl) ? `Supporting Document URL: ${toText(body.fileUrl)}` : "",
     toText(body.dbaName) ? `DBA / Merchant Name: ${toText(body.dbaName)}` : "",
