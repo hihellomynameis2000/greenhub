@@ -21,13 +21,23 @@ export function middleware(request: NextRequest) {
 
   if (host === "agents.greenhub.io") {
     if (pathname === "/") return redirectToPortal(request, "/portal/agent");
+    if (pathname === "/crm") return redirectToPortal(request, "/portal/agent/crm");
+    if (pathname === "/platforms") return redirectToPortal(request, "/portal/agent/platforms");
+    if (pathname.startsWith("/platforms/")) {
+      return redirectToPortal(request, `/portal/agent${pathname}`);
+    }
+    if (pathname === "/submit-deal") return redirectToPortal(request, "/portal/agent/submit-deal");
     if (pathname === "/accounts") return redirectToPortal(request, "/portal/agent/accounts");
     if (pathname === "/residuals") return redirectToPortal(request, "/portal/agent/residuals");
+    if (pathname === "/support") return redirectToPortal(request, "/portal/agent/support");
     return redirectToPortal(request, pathname);
   }
 
   if (host === "admin.greenhub.io") {
     if (pathname === "/") return redirectToPortal(request, "/portal/admin");
+    if (pathname === "/crm") return redirectToPortal(request, "/portal/admin/crm");
+    if (pathname === "/platform-library") return redirectToPortal(request, "/portal/admin/platform-library");
+    if (pathname === "/folder-access") return redirectToPortal(request, "/portal/admin/folder-access");
     if (pathname === "/agents") return redirectToPortal(request, "/portal/admin/agents");
     if (pathname === "/accounts") return redirectToPortal(request, "/portal/admin/accounts");
     if (pathname === "/residuals") return redirectToPortal(request, "/portal/admin/residuals");

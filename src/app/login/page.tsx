@@ -50,14 +50,14 @@ export default function LoginPage() {
           />
 
           <div className="mt-7 text-sm font-semibold text-emerald-800">
-            Residual portal
+            Partner portal
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">
             Sign in to GreenHub
           </h1>
 
           <p className="mt-2 text-sm leading-6 text-slate-700">
-            Secure access for administrators and agents.
+            Secure access for GreenHub administrators, agents, and partners.
           </p>
         </div>
 

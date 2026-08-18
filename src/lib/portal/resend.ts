@@ -63,12 +63,12 @@ export async function sendPortalAccessEmail({
   const isInvite = type === "invite";
   const headline = isInvite ? "Welcome to GreenHub" : "Reset your GreenHub password";
   const description = isInvite
-    ? "You have been invited to access the GreenHub Residual Portal. Use the secure link below to set your password and activate your account."
-    : "Use the secure link below to set a new password for your GreenHub Residual Portal account.";
+    ? "You have been invited to access the GreenHub Partner Portal. Use the secure link below to set your password and activate your account."
+    : "Use the secure link below to set a new password for your GreenHub Partner Portal account.";
   const actionLabel = isInvite ? "Set up your account" : "Set a new password";
   const subject = isInvite
-    ? "You are invited to the GreenHub Residual Portal"
-    : "Reset your GreenHub Residual Portal password";
+    ? "You are invited to the GreenHub Partner Portal"
+    : "Reset your GreenHub Partner Portal password";
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {

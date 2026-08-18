@@ -3,11 +3,16 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
+  BookOpen,
+  BriefcaseBusiness,
   Building2,
   ChevronDown,
+  FolderLock,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   ReceiptText,
+  Send,
   Settings,
   Users,
   type LucideIcon,
@@ -30,6 +35,9 @@ type PortalLink = {
 
 const adminLinks: PortalLink[] = [
   { href: "/portal/admin", icon: LayoutDashboard, label: "Overview" },
+  { href: "/portal/admin/crm", icon: BriefcaseBusiness, label: "CRM" },
+  { href: "/portal/admin/platform-library", icon: BookOpen, label: "Platform Library" },
+  { href: "/portal/admin/folder-access", icon: FolderLock, label: "Folder Access" },
   { href: "/portal/admin/agents", icon: Users, label: "Agents" },
   { href: "/portal/admin/accounts", icon: Building2, label: "Accounts" },
   { href: "/portal/admin/residuals", icon: ReceiptText, label: "Residuals" },
@@ -37,8 +45,12 @@ const adminLinks: PortalLink[] = [
 
 const agentLinks: PortalLink[] = [
   { href: "/portal/agent", icon: LayoutDashboard, label: "Overview" },
+  { href: "/portal/agent/crm", icon: BriefcaseBusiness, label: "CRM" },
+  { href: "/portal/agent/platforms", icon: BookOpen, label: "Platforms" },
+  { href: "/portal/agent/submit-deal", icon: Send, label: "Submit Deal" },
   { href: "/portal/agent/accounts", icon: Building2, label: "Accounts" },
   { href: "/portal/agent/residuals", icon: ReceiptText, label: "Residuals" },
+  { href: "/portal/agent/support", icon: LifeBuoy, label: "Support" },
 ];
 
 function nameFromEmail(email: string) {
@@ -146,6 +158,11 @@ export function PortalShell({
     }
   }
 
+  function linkIsActive(href: string) {
+    if (href === "/portal/admin" || href === "/portal/agent") return pathname === href;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-950">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200 bg-white md:flex">
@@ -160,12 +177,12 @@ export function PortalShell({
           />
         </div>
 
-        <nav className="flex-1 space-y-1 px-4 py-5">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5">
           <div className="mb-2 px-3 text-xs font-medium text-slate-500">
-            {role === "admin" ? "Administration" : "Agent reporting"}
+            {role === "admin" ? "Partner admin" : "Partner workspace"}
           </div>
           {links.map(({ href, icon: Icon, label }) => {
-            const active = pathname === href;
+            const active = linkIsActive(href);
 
             return (
               <Link
@@ -187,8 +204,8 @@ export function PortalShell({
         <div className="border-t border-slate-200 px-6 py-4">
           <p className="text-xs leading-5 text-slate-600">
             {role === "admin"
-              ? "Portfolio reporting and management"
-              : "Finalized portfolio reporting"}
+              ? "Partner operations and reporting"
+              : "CRM, platforms, deals, and residuals"}
           </p>
         </div>
       </aside>
@@ -209,10 +226,10 @@ export function PortalShell({
                 />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-slate-950">
-                    GreenHub Residual Portal
+                    GreenHub Partner Portal
                   </p>
                   <p className="hidden text-xs text-slate-600 sm:block">
-                    {role === "admin" ? "Administration" : "Agent reporting"}
+                    {role === "admin" ? "Partner administration" : "Agent workspace"}
                   </p>
                 </div>
               </div>
@@ -278,7 +295,7 @@ export function PortalShell({
           <nav className="border-b border-slate-200 bg-white px-4 py-2 md:hidden">
             <div className="flex gap-1 overflow-x-auto">
               {links.map(({ href, icon: Icon, label }) => {
-                const active = pathname === href;
+                const active = linkIsActive(href);
 
                 return (
                   <Link

@@ -90,7 +90,7 @@ export default function SetPasswordPage() {
             className="h-10 w-auto"
             priority
           />
-          <div className="mt-7 text-sm font-semibold text-emerald-800">Residual portal</div>
+          <div className="mt-7 text-sm font-semibold text-emerald-800">Partner portal</div>
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">Set your password</h1>
           <p className="mt-2 text-sm leading-6 text-slate-700">
             {email ? `Create secure access for ${email}.` : "Create secure access to the portal."}

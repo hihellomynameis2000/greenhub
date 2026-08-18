@@ -52,7 +52,7 @@ export default function ForgotPasswordPage() {
             className="h-10 w-auto"
             priority
           />
-          <div className="mt-7 text-sm font-semibold text-emerald-800">Residual portal</div>
+          <div className="mt-7 text-sm font-semibold text-emerald-800">Partner portal</div>
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">Reset your password</h1>
           <p className="mt-2 text-sm leading-6 text-slate-700">
             Enter your portal email and we will send a secure password link.

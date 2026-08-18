@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, ReceiptText, Users, type LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  BriefcaseBusiness,
+  Building2,
+  FolderLock,
+  ReceiptText,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { accounts as demoAccounts } from "@/components/portal/mockData";
 import { AdminDashboardOverview } from "@/components/portal/AdminPerformanceSummary";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
@@ -15,9 +23,30 @@ const actions: {
   title: string;
 }[] = [
   {
+    href: "/portal/admin/crm",
+    title: "CRM Command Center",
+    description: "Review agent pipeline, follow-ups, submitted deals, and approvals.",
+    label: "Agent CRM",
+    icon: BriefcaseBusiness,
+  },
+  {
+    href: "/portal/admin/platform-library",
+    title: "Platform Library",
+    description: "Maintain payment platforms, folder structures, files, and program notes.",
+    label: "Partner resources",
+    icon: BookOpen,
+  },
+  {
+    href: "/portal/admin/folder-access",
+    title: "Folder Access",
+    description: "Restrict or allow platform folders for each agent.",
+    label: "Permissions",
+    icon: FolderLock,
+  },
+  {
     href: "/portal/admin/agents",
     title: "Manage Agents",
-    description: "Maintain agent access, roles, statuses, and commission rates.",
+    description: "Maintain agent access, roles, statuses, and commission notes.",
     label: "Agent directory",
     icon: Users,
   },
