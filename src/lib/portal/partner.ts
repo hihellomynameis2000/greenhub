@@ -6,6 +6,7 @@ import type {
   PartnerPlatformRecord,
   Platform,
   PlatformFolderWithResources,
+  PlatformResource,
   PlatformResourceFolder,
   PortalDeal,
 } from "./types";
@@ -122,15 +123,81 @@ export function normalizePartnerPlatforms(
     .filter((platform) => context.profile.role === "admin" || platform.folders.length > 0);
 }
 
+function restIn(values: string[]) {
+  return `in.(${values.join(",")})`;
+}
+
 export async function fetchPartnerLibrary(context: PortalContext) {
   const platformQuery = new URLSearchParams({
-    select: "*,platform_resource_folders(*,platform_resources(*))",
+    select: "*",
     is_active: "eq.true",
     order: "sort_order.asc,name.asc",
   });
   const platforms = await supabaseRest<RawPartnerPlatform[]>("platforms", {
     query: platformQuery,
   });
+  const platformIds = platforms.map((platform) => platform.id);
+
+  let folders: PlatformFolderWithResources[] = [];
+  if (platformIds.length) {
+    const folderQuery = new URLSearchParams({
+      select: "*",
+      is_active: "eq.true",
+      order: "sort_order.asc,name.asc",
+      platform_id: restIn(platformIds),
+    });
+
+    folders = await supabaseRest<PlatformFolderWithResources[]>("platform_resource_folders", {
+      query: folderQuery,
+    });
+
+    const platformsWithoutFolders = platformIds.filter(
+      (id) => !folders.some((folder) => folder.platform_id === id)
+    );
+
+    if (context.profile.role === "admin" && platformsWithoutFolders.length) {
+      await Promise.all(platformsWithoutFolders.map((id) => seedPlatformFolders(id)));
+      folders = await supabaseRest<PlatformFolderWithResources[]>("platform_resource_folders", {
+        query: folderQuery,
+      });
+    }
+  }
+
+  const folderIds = folders.map((folder) => folder.id);
+  let resources: PlatformResource[] = [];
+
+  if (folderIds.length) {
+    const resourceQuery = new URLSearchParams({
+      select: "*",
+      is_active: "eq.true",
+      order: "sort_order.asc,title.asc",
+      folder_id: restIn(folderIds),
+    });
+    resources = await supabaseRest<PlatformResource[]>("platform_resources", {
+      query: resourceQuery,
+    });
+  }
+
+  const resourcesByFolder = new Map<string, PlatformResource[]>();
+  for (const resource of resources) {
+    resourcesByFolder.set(resource.folder_id, [
+      ...(resourcesByFolder.get(resource.folder_id) ?? []),
+      resource,
+    ]);
+  }
+
+  const foldersByPlatform = new Map<string, PlatformFolderWithResources[]>();
+  for (const folder of folders) {
+    const folderWithResources = {
+      ...folder,
+      platform_resources: resourcesByFolder.get(folder.id) ?? [],
+      resources: resourcesByFolder.get(folder.id) ?? [],
+    };
+    foldersByPlatform.set(folder.platform_id, [
+      ...(foldersByPlatform.get(folder.platform_id) ?? []),
+      folderWithResources,
+    ]);
+  }
 
   const accessQuery = new URLSearchParams({
     select: "*",
@@ -144,7 +211,14 @@ export async function fetchPartnerLibrary(context: PortalContext) {
   });
 
   return {
-    partnerPlatforms: normalizePartnerPlatforms(platforms, context, platformAccess),
+    partnerPlatforms: normalizePartnerPlatforms(
+      platforms.map((platform) => ({
+        ...platform,
+        platform_resource_folders: foldersByPlatform.get(platform.id) ?? [],
+      })),
+      context,
+      platformAccess
+    ),
     platformAccess,
   };
 }

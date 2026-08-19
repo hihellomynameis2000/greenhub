@@ -98,7 +98,7 @@ export default function AdminPlatformLibraryPage() {
 
 function AdminPlatformLibraryContent() {
   const { data, refresh } = usePortalData();
-  const liveMode = Boolean(data?.partnerPlatforms.length);
+  const liveMode = Boolean(data);
   const [platformForm, setPlatformForm] = useState(initialPlatform);
   const [resourceForm, setResourceForm] = useState<ResourceForm>(initialResource);
   const [resourceFile, setResourceFile] = useState<File | null>(null);
@@ -109,7 +109,7 @@ function AdminPlatformLibraryContent() {
   const [savingResource, setSavingResource] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sourcePlatforms: PlatformRow[] = liveMode ? data!.partnerPlatforms : previewPlatforms;
+  const sourcePlatforms: PlatformRow[] = data ? data.partnerPlatforms : previewPlatforms;
   const activeResourcePlatformId =
     resourceForm.platformId || (sourcePlatforms[0] ? platformId(sourcePlatforms[0]) : "");
   const selectedPlatform =
@@ -213,9 +213,9 @@ function AdminPlatformLibraryContent() {
       return;
     }
 
-    if (!data || !liveMode) {
+    if (!data) {
       setError(
-        "Live platform library data is not loaded yet. Sign in again or refresh after the partner portal migration is active."
+        "Sign in as an admin to save platform resources. Preview mode cannot upload files."
       );
       return;
     }

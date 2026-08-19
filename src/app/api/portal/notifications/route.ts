@@ -8,7 +8,7 @@ import {
   supabaseRest,
   writeAuditLog,
 } from "@/lib/portal/server";
-import type { ResidualNotification } from "@/lib/portal/types";
+import type { AgentProfile, ResidualNotification } from "@/lib/portal/types";
 
 const months = [
   "January",
@@ -51,6 +51,25 @@ export async function POST(request: NextRequest) {
     if (residualMonth < 1 || residualMonth > 12) {
       return NextResponse.json({ error: "Residual month must be between 1 and 12." }, { status: 400 });
     }
+    if (residualYear < 2000 || residualYear > 2100) {
+      return NextResponse.json({ error: "Residual year is invalid." }, { status: 400 });
+    }
+
+    const targetAgents = await supabaseRest<AgentProfile[]>("agent_profiles", {
+      query: new URLSearchParams({
+        select: "*",
+        id: `eq.${agentId}`,
+        limit: "1",
+      }),
+    });
+    const targetAgent = targetAgents[0];
+
+    if (!targetAgent || targetAgent.role !== "agent" || targetAgent.status !== "active") {
+      return NextResponse.json(
+        { error: "Select an active agent before sending a residual notification." },
+        { status: 400 }
+      );
+    }
 
     try {
       await supabaseRest<Pick<ResidualNotification, "read_at">[]>("residual_notifications", {
@@ -78,11 +97,20 @@ export async function POST(request: NextRequest) {
       body: { residual_status: "finalized", updated_by: context.profile.id },
     });
 
+    if (!finalizedResiduals.length) {
+      return NextResponse.json(
+        { error: "No residual entries were found for that agent and month." },
+        { status: 400 }
+      );
+    }
+
     const notificationQuery = new URLSearchParams({
       select: "*",
       agent_id: `eq.${agentId}`,
       residual_month: `eq.${residualMonth}`,
       residual_year: `eq.${residualYear}`,
+      notification_type: "eq.residual_finalized",
+      order: "created_at.desc",
       limit: "1",
     });
     const existing = await supabaseRest<ResidualNotification[]>("residual_notifications", {
@@ -132,6 +160,7 @@ export async function POST(request: NextRequest) {
 
     await writeAuditLog(context, "residual.notification_sent", "residual_notifications", notification.id, {
       agentId,
+      agentEmail: targetAgent.email,
       finalizedResidualCount: finalizedResiduals.length,
       residualMonth,
       residualYear,
