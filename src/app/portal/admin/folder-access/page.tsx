@@ -212,77 +212,84 @@ function AdminFolderAccessContent() {
             </div>
           </div>
 
-          <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm text-slate-900">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
-                <tr>
-                  <th className="px-5 py-3 font-semibold">Agent</th>
-                  {folders.map((folder) => (
-                    <th key={folderId(folder)} className="px-3 py-3 text-center font-semibold">
-                      {folder.name}
-                    </th>
-                  ))}
-                  <th className="px-5 py-3 text-right font-semibold">Bulk</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agents.map((agent) => {
-                  const currentAgentId = agentId(agent);
+          <div className="mt-5 space-y-3">
+            {agents.map((agent) => {
+              const currentAgentId = agentId(agent);
+              const allowedForAgent = folders.filter(
+                (folder) => access[currentAgentId]?.[`${platformId(selectedPlatform)}:${folderId(folder)}`]
+              ).length;
 
-                  return (
-                    <tr key={currentAgentId} className="border-t border-slate-200 hover:bg-slate-50">
-                      <td className="px-5 py-3.5">
-                        <p className="font-semibold text-slate-950">{agent.name}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">{agent.email}</p>
-                      </td>
+              return (
+                <article key={currentAgentId} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                    <div className="min-w-0 2xl:w-56 2xl:shrink-0">
+                      <p className="truncate text-sm font-semibold text-slate-950">{agent.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">{agent.email}</p>
+                      <p className="mt-2 text-xs font-semibold text-slate-600">
+                        {allowedForAgent}/{folders.length} folders allowed
+                      </p>
+                    </div>
+
+                    <div className="grid flex-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                       {folders.map((folder) => {
-                        const allowed = Boolean(access[currentAgentId]?.[`${platformId(selectedPlatform)}:${folderId(folder)}`]);
+                        const allowed = Boolean(
+                          access[currentAgentId]?.[`${platformId(selectedPlatform)}:${folderId(folder)}`]
+                        );
+                        const Icon = "icon" in folder ? folder.icon : folderIconForKey(folderKey(folder));
 
                         return (
-                          <td key={folderId(folder)} className="px-3 py-3.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleAccess(currentAgentId, folder)}
-                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                                allowed
-                                  ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-                                  : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                          <button
+                            key={folderId(folder)}
+                            type="button"
+                            onClick={() => toggleAccess(currentAgentId, folder)}
+                            className={`flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                              allowed
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                                : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                            }`}
+                            aria-label={`${allowed ? "Remove" : "Allow"} ${folder.name} access for ${agent.name}`}
+                            title={allowed ? "Allowed" : "Restricted"}
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                              <span className="truncate text-xs font-semibold">{folder.name}</span>
+                            </span>
+                            <span
+                              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                                allowed ? "bg-emerald-100 text-emerald-800" : "bg-white text-slate-400"
                               }`}
-                              aria-label={`${allowed ? "Remove" : "Allow"} ${folder.name} access for ${agent.name}`}
-                              title={allowed ? "Allowed" : "Restricted"}
                             >
                               {allowed ? (
                                 <Check aria-hidden="true" className="h-4 w-4" />
                               ) : (
                                 <X aria-hidden="true" className="h-4 w-4" />
                               )}
-                            </button>
-                          </td>
+                            </span>
+                          </button>
                         );
                       })}
-                      <td className="px-5 py-3.5">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setAgentAccess(currentAgentId, true)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-                          >
-                            Allow all
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAgentAccess(currentAgentId, false)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-                          >
-                            Restrict all
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    </div>
+
+                    <div className="flex shrink-0 flex-wrap gap-2 2xl:w-28 2xl:flex-col">
+                      <button
+                        type="button"
+                        onClick={() => setAgentAccess(currentAgentId, true)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                      >
+                        Allow all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAgentAccess(currentAgentId, false)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                      >
+                        Restrict all
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           <PortalActionButton

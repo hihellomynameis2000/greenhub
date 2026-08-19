@@ -15,7 +15,6 @@ import { useMemo, useState } from "react";
 import {
   displayPortalStatus,
   folderIconForKey,
-  folderSummaryForKey,
   partnerPlatforms,
   platformCategories,
   statusClassName,
@@ -141,6 +140,15 @@ function AdminPlatformLibraryContent() {
       ),
     [category, sourcePlatforms, status]
   );
+  const resourceHasContent = Boolean(
+    resourceFile || resourceForm.externalUrl.trim() || resourceForm.description.trim()
+  );
+  const resourceCanSubmit = Boolean(
+    activeResourcePlatformId &&
+      activeResourceFolderId &&
+      resourceForm.title.trim() &&
+      resourceHasContent
+  );
 
   function setResourceField(field: keyof ResourceForm, value: string) {
     setResourceForm((current) => {
@@ -200,11 +208,23 @@ function AdminPlatformLibraryContent() {
       return;
     }
 
+    if (!resourceHasContent) {
+      setError("Add a file, link, or description before saving the resource.");
+      return;
+    }
+
+    if (!data || !liveMode) {
+      setError(
+        "Live platform library data is not loaded yet. Sign in again or refresh after the partner portal migration is active."
+      );
+      return;
+    }
+
     setSavingResource(true);
     setError(null);
 
     try {
-      if (data && resourceFile) {
+      if (resourceFile) {
         const {
           data: { session },
         } = await getPortalSupabase().auth.getSession();
@@ -224,7 +244,7 @@ function AdminPlatformLibraryContent() {
         });
         const payload = (await response.json()) as { error?: string };
         if (!response.ok) throw new Error(payload.error || "The resource file could not be uploaded.");
-      } else if (data) {
+      } else {
         await portalRequest("/api/portal/partner/resources", {
           method: "POST",
           body: JSON.stringify({
@@ -460,7 +480,7 @@ function AdminPlatformLibraryContent() {
 
             <button
               type="button"
-              disabled={savingResource || !liveMode}
+              disabled={savingResource || !resourceCanSubmit}
               onClick={() => void saveResource()}
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -518,7 +538,7 @@ function AdminPlatformLibraryContent() {
                     <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-700">
                       {platform.description || "Processing platform resources and submission guidance."}
                     </p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       {platform.folders.map((folder) => {
                         const key = folderKey(folder);
                         const Icon = "icon" in folder ? folder.icon : folderIconForKey(key);
@@ -533,17 +553,15 @@ function AdminPlatformLibraryContent() {
                               setResourceField("platformId", platformId(platform));
                               setResourceField("folderId", folderId(folder));
                             }}
-                            className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left transition-colors hover:bg-slate-100"
+                            className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left transition-colors hover:bg-slate-100"
                           >
-                            <div className="flex items-center gap-2">
-                              <Icon aria-hidden="true" className="h-4 w-4 text-slate-600" strokeWidth={1.8} />
-                              <span className="text-xs font-semibold text-slate-950">{folder.name}</span>
-                            </div>
-                            <p className="mt-1 text-xs leading-5 text-slate-600">
-                              {"resources" in folder
-                                ? `${resources.length} resources`
-                                : folderSummaryForKey(key, folder.summary)}
-                            </p>
+                            <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-600" strokeWidth={1.8} />
+                            <span className="min-w-0">
+                              <span className="block truncate text-xs font-semibold text-slate-950">{folder.name}</span>
+                              <span className="block text-[11px] font-medium text-slate-500">
+                                {resources.length} {resources.length === 1 ? "resource" : "resources"}
+                              </span>
+                            </span>
                           </button>
                         );
                       })}

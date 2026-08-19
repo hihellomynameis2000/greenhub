@@ -1,10 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarClock, CheckCircle2, CircleDashed, Send } from "lucide-react";
-import { crmDeals, crmStages } from "@/components/portal/partnerData";
+import {
+  ArrowRight,
+  CalendarClock,
+  CheckCircle2,
+  CircleDashed,
+  GripVertical,
+  Send,
+} from "lucide-react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { crmDeals, crmStages, type CrmStage } from "@/components/portal/partnerData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { Card, PageHeader, PortalShell } from "@/components/portal/PortalShell";
+import { showPortalToast } from "@/components/portal/PortalToast";
+import { portalRequest } from "@/lib/portal/client";
 import type { PortalDeal, PortalDealStage } from "@/lib/portal/types";
 
 type DealRow = {
@@ -12,11 +22,13 @@ type DealRow = {
   contact: string;
   email: string;
   estimatedVolume: number;
+  id: string;
+  isLive: boolean;
   lastActivity: string;
   merchant: string;
   nextFollowUp: string;
   platform: string;
-  stage: string;
+  stage: CrmStage;
 };
 
 function money(value: number) {
@@ -34,8 +46,8 @@ function stageTone(stage: string) {
   return "bg-slate-100 text-slate-700";
 }
 
-function stageLabel(stage: PortalDealStage) {
-  const labels: Record<PortalDealStage, string> = {
+function stageLabel(stage: PortalDealStage): CrmStage {
+  const labels: Record<PortalDealStage, CrmStage> = {
     application_sent: "Application Sent",
     approved: "Approved",
     contacted: "Contacted",
@@ -44,6 +56,26 @@ function stageLabel(stage: PortalDealStage) {
     submitted: "Submitted",
   };
   return labels[stage];
+}
+
+function stageCode(stage: CrmStage): PortalDealStage {
+  const codes: Record<CrmStage, PortalDealStage> = {
+    "Application Sent": "application_sent",
+    Approved: "approved",
+    Contacted: "contacted",
+    Declined: "declined",
+    "New Lead": "new_lead",
+    Submitted: "submitted",
+  };
+  return codes[stage];
+}
+
+function demoDealRows(): DealRow[] {
+  return crmDeals.map((deal) => ({
+    ...deal,
+    id: `demo-${deal.merchant.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+    isLive: false,
+  }));
 }
 
 function numberValue(value: number | string | null) {
@@ -58,6 +90,8 @@ function liveDealRows(deals: PortalDeal[], platformNames: Map<string, string>, a
     contact: deal.contact_name || "Merchant contact",
     email: deal.contact_email || "",
     estimatedVolume: numberValue(deal.estimated_volume),
+    id: deal.id,
+    isLive: true,
     lastActivity: deal.last_activity || "CRM activity updated",
     merchant: deal.merchant_name,
     nextFollowUp: deal.next_follow_up || "No follow-up set",
@@ -75,15 +109,94 @@ export default function AgentCrmPage() {
 }
 
 function AgentCrmContent() {
-  const { data } = usePortalData();
-  const platformNames = new Map(data?.platforms.map((platform) => [platform.id, platform.name]) ?? []);
-  const deals: DealRow[] = data?.portalDeals.length
-    ? liveDealRows(data.portalDeals, platformNames, data.profile.name)
-    : crmDeals;
+  const { data, refresh } = usePortalData();
+  const platformNames = useMemo(
+    () => new Map(data?.platforms.map((platform) => [platform.id, platform.name]) ?? []),
+    [data?.platforms]
+  );
+  const sourceDeals = useMemo(
+    () =>
+      data?.portalDeals.length
+        ? liveDealRows(data.portalDeals, platformNames, data.profile.name)
+        : demoDealRows(),
+    [data?.portalDeals, data?.profile.name, platformNames]
+  );
+  const [deals, setDeals] = useState<DealRow[]>(sourceDeals);
+  const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
+  const [dropStage, setDropStage] = useState<CrmStage | null>(null);
+  const [savingDealId, setSavingDealId] = useState<string | null>(null);
   const openDeals = deals.filter((deal) => !["Approved", "Declined"].includes(deal.stage));
   const submittedDeals = deals.filter((deal) => deal.stage === "Submitted");
   const approvedDeals = deals.filter((deal) => deal.stage === "Approved");
   const dueToday = deals.filter((deal) => deal.nextFollowUp.toLowerCase().includes("today"));
+
+  useEffect(() => {
+    setDeals(sourceDeals);
+  }, [sourceDeals]);
+
+  function dragStart(event: DragEvent<HTMLElement>, dealId: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", dealId);
+    setDraggedDealId(dealId);
+  }
+
+  function dragOver(event: DragEvent<HTMLDivElement>, stage: CrmStage) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropStage(stage);
+  }
+
+  async function moveDeal(dealId: string, nextStage: CrmStage) {
+    const deal = deals.find((item) => item.id === dealId);
+    if (!deal || deal.stage === nextStage) return;
+
+    const previousStage = deal.stage;
+    setDeals((current) =>
+      current.map((item) =>
+        item.id === dealId
+          ? { ...item, lastActivity: `Moved to ${nextStage}`, stage: nextStage }
+          : item
+      )
+    );
+
+    if (!deal.isLive) {
+      showPortalToast({ title: "Pipeline updated", message: `${deal.merchant} moved to ${nextStage}.` });
+      return;
+    }
+
+    setSavingDealId(dealId);
+
+    try {
+      await portalRequest<{ deal: PortalDeal }>("/api/portal/deals", {
+        method: "PATCH",
+        body: JSON.stringify({
+          id: dealId,
+          lastActivity: `Moved to ${nextStage}`,
+          stage: stageCode(nextStage),
+        }),
+      });
+      await refresh();
+      showPortalToast({ title: "Deal stage updated", message: `${deal.merchant} moved to ${nextStage}.` });
+    } catch (requestError) {
+      setDeals((current) =>
+        current.map((item) => (item.id === dealId ? { ...item, stage: previousStage } : item))
+      );
+      showPortalToast({
+        title: "Move failed",
+        message: requestError instanceof Error ? requestError.message : "The deal stage could not be updated.",
+      });
+    } finally {
+      setSavingDealId(null);
+    }
+  }
+
+  function dropDeal(event: DragEvent<HTMLDivElement>, stage: CrmStage) {
+    event.preventDefault();
+    const dealId = event.dataTransfer.getData("text/plain") || draggedDealId;
+    setDraggedDealId(null);
+    setDropStage(null);
+    if (dealId) void moveDeal(dealId, stage);
+  }
 
   return (
     <>
@@ -128,14 +241,39 @@ function AgentCrmContent() {
                     {stageDeals.length}
                   </span>
                 </div>
-                <div className="space-y-2 p-2">
+                <div
+                  className={`min-h-64 space-y-2 p-2 transition-colors ${
+                    dropStage === stage ? "bg-emerald-50" : ""
+                  }`}
+                  onDragOver={(event) => dragOver(event, stage)}
+                  onDrop={(event) => dropDeal(event, stage)}
+                >
                   {stageDeals.length ? (
                     stageDeals.map((deal) => (
-                      <article key={deal.merchant} className="rounded-lg border border-slate-200 bg-white p-3">
+                      <article
+                        key={deal.id}
+                        draggable
+                        onDragStart={(event) => dragStart(event, deal.id)}
+                        onDragEnd={() => {
+                          setDraggedDealId(null);
+                          setDropStage(null);
+                        }}
+                        className={`cursor-grab rounded-lg border border-slate-200 bg-white p-3 transition active:cursor-grabbing ${
+                          draggedDealId === deal.id
+                            ? "opacity-60 ring-2 ring-emerald-200"
+                            : "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm"
+                        }`}
+                      >
                         <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-sm font-semibold text-slate-950">{deal.merchant}</h4>
+                          <div className="flex min-w-0 items-start gap-1.5">
+                            <GripVertical
+                              aria-hidden="true"
+                              className="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+                            />
+                            <h4 className="text-sm font-semibold text-slate-950">{deal.merchant}</h4>
+                          </div>
                           <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${stageTone(deal.stage)}`}>
-                            {deal.stage}
+                            {savingDealId === deal.id ? "Saving" : deal.stage}
                           </span>
                         </div>
                         <p className="mt-1 text-xs text-slate-600">{deal.contact}</p>
