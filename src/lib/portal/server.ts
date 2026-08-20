@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { portalRoleForHost, requestHost, roleMismatchMessage } from "./hosts";
 import { twoFactorTokenIsValid } from "./twoFactor";
@@ -65,6 +66,28 @@ function parseResponseError(status: number, text: string) {
   } catch {
     return text || "Supabase request failed.";
   }
+}
+
+function errorReference() {
+  return `GH-${randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
+function isTechnicalMessage(message: string) {
+  return /schema cache|could not find|relation|column|table|supabase|postgrest|database|violates|foreign key|duplicate key|not configured|storage|resend|migration/i.test(
+    message
+  );
+}
+
+function publicPortalError(error: PortalApiError, reference: string) {
+  if (!isTechnicalMessage(error.message) && error.status < 500) {
+    return error.message;
+  }
+
+  if (error.status === 401 || error.status === 403) {
+    return `Portal access could not be verified. Reference code: ${reference}`;
+  }
+
+  return `Portal request could not be completed. Reference code: ${reference}`;
 }
 
 export async function supabaseRest<T>(
@@ -224,12 +247,27 @@ export async function writeAuditLog(
 }
 
 export function portalErrorResponse(error: unknown) {
+  const reference = errorReference();
+
   if (error instanceof PortalApiError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error(`Portal API error ${reference}`, error);
+    return NextResponse.json(
+      {
+        code: reference,
+        error: publicPortalError(error, reference),
+      },
+      { status: error.status }
+    );
   }
 
-  console.error("Portal API error", error);
-  return NextResponse.json({ error: "Unexpected portal server error." }, { status: 500 });
+  console.error(`Portal API error ${reference}`, error);
+  return NextResponse.json(
+    {
+      code: reference,
+      error: `Portal request could not be completed. Reference code: ${reference}`,
+    },
+    { status: 500 }
+  );
 }
 
 export function requiredString(value: unknown, fieldName: string) {
