@@ -1,6 +1,8 @@
 import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
+import { portalRoleForHost, requestHost, roleMismatchMessage } from "./hosts";
+import { twoFactorTokenIsValid } from "./twoFactor";
 import type { AgentProfile, PortalRole } from "./types";
 
 type RestOptions = {
@@ -28,6 +30,10 @@ export class PortalApiError extends Error {
     super(message);
   }
 }
+
+type PortalContextOptions = {
+  skipTwoFactor?: boolean;
+};
 
 function supabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -134,7 +140,8 @@ async function supabaseAuthUser(accessToken: string): Promise<SupabaseAuthUser> 
 
 export async function requirePortalContext(
   request: NextRequest,
-  requiredRole?: PortalRole
+  requiredRole?: PortalRole,
+  options: PortalContextOptions = {}
 ): Promise<PortalContext> {
   const authorization = request.headers.get("authorization");
   const accessToken = authorization?.startsWith("Bearer ")
@@ -178,6 +185,15 @@ export async function requirePortalContext(
 
   if (requiredRole && profile.role !== requiredRole) {
     throw new PortalApiError("You do not have permission to perform this action.", 403);
+  }
+
+  const expectedRoleForHost = portalRoleForHost(requestHost(request.headers.get("host")));
+  if (expectedRoleForHost && profile.role !== expectedRoleForHost) {
+    throw new PortalApiError(roleMismatchMessage(expectedRoleForHost), 403);
+  }
+
+  if (!options.skipTwoFactor && !twoFactorTokenIsValid(request, user.id)) {
+    throw new PortalApiError("Additional email verification is required.", 401);
   }
 
   return { profile, user };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { portalAppUrl, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
+import { portalRoleForHost, requestHost } from "@/lib/portal/hosts";
+import { portalAppUrlForRole, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
 import { PortalApiError, supabaseAuthAdmin, supabaseRest } from "@/lib/portal/server";
 import type { AgentProfile } from "@/lib/portal/types";
 
@@ -20,24 +21,26 @@ export async function POST(request: NextRequest) {
 
   try {
     resendConfig();
-    const profiles = await supabaseRest<Pick<AgentProfile, "email" | "name">[]>(
+    const profiles = await supabaseRest<Pick<AgentProfile, "email" | "name" | "role">[]>(
       "agent_profiles",
       {
         query: new URLSearchParams({
-          select: "email,name",
+          select: "email,name,role",
           email: `eq.${email}`,
           limit: "1",
         }),
       }
     );
     const profile = profiles[0];
+    const expectedRole = portalRoleForHost(requestHost(request.headers.get("host")));
 
     if (!profile) return NextResponse.json(successResponse);
+    if (expectedRole && profile.role !== expectedRole) return NextResponse.json(successResponse);
 
     const recovery = await supabaseAuthAdmin<RecoveryLinkResponse>("admin/generate_link", {
       type: "recovery",
       email: profile.email,
-      redirect_to: `${portalAppUrl()}/set-password`,
+      redirect_to: `${portalAppUrlForRole(profile.role)}/set-password`,
     });
     const accessUrl = recovery.action_link ?? recovery.properties?.action_link;
 

@@ -10,7 +10,7 @@ import {
   supabaseRest,
   writeAuditLog,
 } from "@/lib/portal/server";
-import { portalAppUrl, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
+import { portalAppUrlForRole, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
 import type { AgentProfile } from "@/lib/portal/types";
 
 type InviteLinkResponse = {
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       type: "invite",
       email,
       data: { name },
-      redirect_to: `${portalAppUrl()}/set-password`,
+      redirect_to: `${portalAppUrlForRole(role)}/set-password`,
     });
     const authUserId = invitation.user?.id ?? invitation.id;
     const inviteUrl = invitation.action_link ?? invitation.properties?.action_link;

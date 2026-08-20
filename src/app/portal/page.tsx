@@ -29,7 +29,19 @@ export default function PortalRedirect() {
       try {
         const bootstrap = await portalRequest<PortalBootstrap>("/api/portal/bootstrap");
         router.replace(bootstrap.profile.role === "admin" ? "/portal/admin" : "/portal/agent");
-      } catch {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+
+        if (message.includes("Additional email verification")) {
+          try {
+            await portalRequest("/api/auth/two-factor/send", { method: "POST" });
+            router.replace("/login?verify=sent");
+            return;
+          } catch {
+            await getPortalSupabase().auth.signOut();
+          }
+        }
+
         router.replace("/login");
       }
     }

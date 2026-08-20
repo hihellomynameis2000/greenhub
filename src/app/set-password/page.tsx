@@ -4,7 +4,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
-import type { PortalBootstrap } from "@/lib/portal/types";
 
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -70,8 +69,8 @@ export default function SetPasswordPage() {
       const { error: updateError } = await getPortalSupabase().auth.updateUser({ password });
       if (updateError) throw updateError;
 
-      const bootstrap = await portalRequest<PortalBootstrap>("/api/portal/bootstrap");
-      router.replace(bootstrap.profile.role === "admin" ? "/portal/admin" : "/portal/agent");
+      await portalRequest("/api/auth/two-factor/send", { method: "POST" });
+      router.replace("/login?verify=sent");
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Password setup failed.");
       setSaving(false);

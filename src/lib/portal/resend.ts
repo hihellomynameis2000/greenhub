@@ -1,11 +1,20 @@
 import "server-only";
 
+import { portalOriginForRole } from "./hosts";
 import { PortalApiError } from "./server";
+import type { PortalRole } from "./types";
 
 type PortalAccessEmail = {
   accessUrl: string;
   name: string;
   type: "invite" | "recovery";
+  to: string;
+};
+
+type PortalLoginCodeEmail = {
+  code: string;
+  name: string;
+  role: "admin" | "agent";
   to: string;
 };
 
@@ -23,18 +32,24 @@ function escapeHtml(value: string) {
 }
 
 export function portalAppUrl() {
-  const configuredUrl = process.env.PORTAL_APP_URL;
-
-  if (configuredUrl) {
-    try {
-      return new URL(configuredUrl).origin;
-    } catch {
-      throw new PortalApiError("PORTAL_APP_URL must be a valid absolute URL.", 500);
-    }
+  try {
+    return portalOriginForRole("agent");
+  } catch {
+    throw new PortalApiError("PORTAL_APP_URL must be a valid absolute URL.", 500);
   }
+}
 
-  const host = process.env.NEXT_PUBLIC_PORTAL_HOST ?? "console.greenhub.io";
-  return `https://${host}`;
+export function portalAppUrlForRole(role: PortalRole) {
+  try {
+    return portalOriginForRole(role);
+  } catch {
+    throw new PortalApiError(
+      role === "admin"
+        ? "ADMIN_PORTAL_APP_URL must be a valid absolute URL."
+        : "PORTAL_APP_URL must be a valid absolute URL.",
+      500
+    );
+  }
 }
 
 export function resendConfig() {
@@ -98,6 +113,50 @@ export async function sendPortalAccessEmail({
     const body = await response.text();
     throw new PortalApiError(
       `Resend could not deliver the invitation${body ? `: ${body}` : "."}`,
+      502
+    );
+  }
+}
+
+export async function sendPortalLoginCodeEmail({
+  code,
+  name,
+  role,
+  to,
+}: PortalLoginCodeEmail) {
+  const { apiKey, from } = resendConfig();
+  const safeCode = escapeHtml(code);
+  const safeName = escapeHtml(name);
+  const roleLabel = role === "admin" ? "administrator" : "agent";
+  const subject = `Your GreenHub verification code is ${code}`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      html: `
+        <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5;max-width:560px;margin:0 auto;padding:24px">
+          <p style="color:#047857;font-size:13px;font-weight:700;letter-spacing:.08em;margin:0 0 12px;text-transform:uppercase">GreenHub Partner Portal</p>
+          <h1 style="font-size:24px;margin:0 0 16px">Verify your sign in</h1>
+          <p>Hi ${safeName},</p>
+          <p>Use this one-time code to finish signing in to your GreenHub ${roleLabel} workspace.</p>
+          <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:12px;font-size:32px;font-weight:800;letter-spacing:8px;margin:24px 0;padding:18px;text-align:center">${safeCode}</div>
+          <p style="color:#475569;font-size:13px">This code expires in 10 minutes. If you did not try to sign in, reset your password and contact GreenHub support.</p>
+        </div>
+      `,
+      subject,
+      text: `Hi ${name},\n\nUse this one-time code to finish signing in to your GreenHub ${roleLabel} workspace: ${code}\n\nThis code expires in 10 minutes.`,
+      to: [to],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new PortalApiError(
+      `Resend could not deliver the verification code${body ? `: ${body}` : "."}`,
       502
     );
   }

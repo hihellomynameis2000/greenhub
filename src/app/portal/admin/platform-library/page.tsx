@@ -215,7 +215,7 @@ function AdminPlatformLibraryContent() {
 
     if (!data) {
       setError(
-        "Sign in as an admin to save platform resources. Preview mode cannot upload files."
+        "A verified admin session is required to save platform resources."
       );
       return;
     }

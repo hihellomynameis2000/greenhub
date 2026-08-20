@@ -82,6 +82,7 @@ export function PortalShell({
   const router = useRouter();
   const links = role === "admin" ? adminLinks : agentLinks;
   const demoUser = role === "admin" ? agents[0] : agents[1];
+  const [checkingAccess, setCheckingAccess] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -97,6 +98,7 @@ export function PortalShell({
       try {
         supabase = getPortalSupabase();
       } catch {
+        router.replace("/login");
         return;
       }
 
@@ -104,7 +106,10 @@ export function PortalShell({
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user?.email) return;
+      if (!user?.email) {
+        router.replace("/login");
+        return;
+      }
 
       try {
         const bootstrap = await portalRequest<PortalBootstrap>("/api/portal/bootstrap");
@@ -116,7 +121,22 @@ export function PortalShell({
         }
 
         setViewer({ name: profile.name || nameFromEmail(user.email), email: user.email });
-      } catch {
+        setCheckingAccess(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+
+        if (message.includes("Additional email verification")) {
+          try {
+            await portalRequest("/api/auth/two-factor/send", { method: "POST" });
+            router.replace("/login?verify=sent");
+            return;
+          } catch {
+            await supabase.auth.signOut();
+            router.replace("/login");
+            return;
+          }
+        }
+
         await supabase.auth.signOut();
         router.replace("/login");
       }
@@ -152,6 +172,7 @@ export function PortalShell({
     setMenuOpen(false);
 
     try {
+      await fetch("/api/auth/two-factor/session", { method: "DELETE" });
       await getPortalSupabase().auth.signOut();
     } finally {
       router.replace("/login");
@@ -161,6 +182,16 @@ export function PortalShell({
   function linkIsActive(href: string) {
     if (href === "/portal/admin" || href === "/portal/agent") return pathname === href;
     return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
+  if (checkingAccess) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+        <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-700 shadow-sm">
+          Checking secure portal access...
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -1,51 +1,70 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  adminPortalHost,
+  partnerPortalHost,
+  requestHost,
+} from "./src/lib/portal/hosts";
 
-const canonicalPortalHost = process.env.NEXT_PUBLIC_PORTAL_HOST ?? "console.greenhub.io";
+const authPaths = new Set(["/login", "/forgot-password", "/set-password"]);
 
-function hostname(request: NextRequest) {
-  return (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
-}
-
-function redirectToPortal(request: NextRequest, pathname: string) {
+function redirectToHost(request: NextRequest, host: string, pathname: string) {
   const url = request.nextUrl.clone();
   url.protocol = "https:";
-  url.hostname = canonicalPortalHost;
+  url.hostname = host;
   url.port = "";
   url.pathname = pathname;
   return NextResponse.redirect(url, 308);
 }
 
+function redirectToPath(request: NextRequest, pathname: string) {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  return NextResponse.redirect(url, 308);
+}
+
 export function middleware(request: NextRequest) {
-  const host = hostname(request);
+  const host = requestHost(request.headers.get("host"));
   const { pathname } = request.nextUrl;
+  const adminHost = adminPortalHost();
+  const partnerHost = partnerPortalHost();
 
   if (host === "agents.greenhub.io") {
-    if (pathname === "/") return redirectToPortal(request, "/portal/agent");
-    if (pathname === "/crm") return redirectToPortal(request, "/portal/agent/crm");
-    if (pathname === "/platforms") return redirectToPortal(request, "/portal/agent/platforms");
-    if (pathname.startsWith("/platforms/")) {
-      return redirectToPortal(request, `/portal/agent${pathname}`);
+    if (pathname === "/") return redirectToHost(request, partnerHost, "/login");
+    if (authPaths.has(pathname)) return redirectToHost(request, partnerHost, pathname);
+    if (pathname === "/portal" || pathname === "/portal/agent") {
+      return redirectToHost(request, partnerHost, "/portal/agent");
     }
-    if (pathname === "/submit-deal") return redirectToPortal(request, "/portal/agent/submit-deal");
-    if (pathname === "/accounts") return redirectToPortal(request, "/portal/agent/accounts");
-    if (pathname === "/residuals") return redirectToPortal(request, "/portal/agent/residuals");
-    if (pathname === "/support") return redirectToPortal(request, "/portal/agent/support");
-    return redirectToPortal(request, pathname);
+    if (pathname === "/crm") return redirectToHost(request, partnerHost, "/portal/agent/crm");
+    if (pathname === "/platforms") return redirectToHost(request, partnerHost, "/portal/agent/platforms");
+    if (pathname.startsWith("/platforms/")) {
+      return redirectToHost(request, partnerHost, `/portal/agent${pathname}`);
+    }
+    if (pathname === "/submit-deal") return redirectToHost(request, partnerHost, "/portal/agent/submit-deal");
+    if (pathname === "/accounts") return redirectToHost(request, partnerHost, "/portal/agent/accounts");
+    if (pathname === "/residuals") return redirectToHost(request, partnerHost, "/portal/agent/residuals");
+    if (pathname === "/support") return redirectToHost(request, partnerHost, "/portal/agent/support");
+    return redirectToHost(request, partnerHost, pathname);
   }
 
-  if (host === "admin.greenhub.io") {
-    if (pathname === "/") return redirectToPortal(request, "/portal/admin");
-    if (pathname === "/crm") return redirectToPortal(request, "/portal/admin/crm");
-    if (pathname === "/platform-library") return redirectToPortal(request, "/portal/admin/platform-library");
-    if (pathname === "/folder-access") return redirectToPortal(request, "/portal/admin/folder-access");
-    if (pathname === "/agents") return redirectToPortal(request, "/portal/admin/agents");
-    if (pathname === "/accounts") return redirectToPortal(request, "/portal/admin/accounts");
-    if (pathname === "/residuals") return redirectToPortal(request, "/portal/admin/residuals");
-    return redirectToPortal(request, pathname);
+  if (host === adminHost) {
+    if (pathname === "/") return redirectToPath(request, "/login");
+    if (pathname === "/portal") return redirectToPath(request, "/portal/admin");
+    if (pathname.startsWith("/portal/agent")) return redirectToPath(request, "/portal/admin");
+    if (pathname === "/crm") return redirectToPath(request, "/portal/admin/crm");
+    if (pathname === "/platform-library") return redirectToPath(request, "/portal/admin/platform-library");
+    if (pathname === "/folder-access") return redirectToPath(request, "/portal/admin/folder-access");
+    if (pathname === "/agents") return redirectToPath(request, "/portal/admin/agents");
+    if (pathname === "/accounts") return redirectToPath(request, "/portal/admin/accounts");
+    if (pathname === "/residuals") return redirectToPath(request, "/portal/admin/residuals");
+    return NextResponse.next();
   }
 
-  if (host === canonicalPortalHost && pathname === "/") {
-    return redirectToPortal(request, "/login");
+  if (host === partnerHost) {
+    if (pathname === "/") return redirectToPath(request, "/login");
+    if (pathname === "/portal") return redirectToPath(request, "/portal/agent");
+    if (pathname.startsWith("/portal/admin")) {
+      return redirectToHost(request, adminHost, pathname);
+    }
   }
 
   return NextResponse.next();
