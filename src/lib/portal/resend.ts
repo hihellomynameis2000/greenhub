@@ -18,6 +18,10 @@ type PortalLoginCodeEmail = {
   to: string;
 };
 
+type ResendSuccessResponse = {
+  id?: string;
+};
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => {
     const entities: Record<string, string> = {
@@ -116,6 +120,13 @@ export async function sendPortalAccessEmail({
       502
     );
   }
+
+  const delivery = (await response.json().catch(() => ({}))) as ResendSuccessResponse;
+  console.log("Portal access email accepted by Resend", {
+    resendId: delivery.id ?? null,
+    to,
+    type,
+  });
 }
 
 export async function sendPortalLoginCodeEmail({
@@ -160,4 +171,11 @@ export async function sendPortalLoginCodeEmail({
       502
     );
   }
+
+  const delivery = (await response.json().catch(() => ({}))) as ResendSuccessResponse;
+  console.log("Portal verification email accepted by Resend", {
+    resendId: delivery.id ?? null,
+    role,
+    to,
+  });
 }
