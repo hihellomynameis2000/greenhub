@@ -131,9 +131,11 @@ function restIn(values: string[]) {
 export async function fetchPartnerLibrary(context: PortalContext) {
   const platformQuery = new URLSearchParams({
     select: "*",
-    is_active: "eq.true",
     order: "sort_order.asc,name.asc",
   });
+  if (context.profile.role !== "admin") {
+    platformQuery.set("is_active", "eq.true");
+  }
   const platforms = await supabaseRest<RawPartnerPlatform[]>("platforms", {
     query: platformQuery,
   });

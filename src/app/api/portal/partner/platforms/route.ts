@@ -16,6 +16,71 @@ import {
 } from "@/lib/portal/partner";
 import type { Platform } from "@/lib/portal/types";
 
+async function restrictPlatformAccess(platformId: string, actorId: string) {
+  await supabaseRest("agent_platform_access", {
+    method: "PATCH",
+    prefer: "return=minimal",
+    query: new URLSearchParams({ platform_id: `eq.${platformId}` }),
+    body: {
+      can_view: false,
+      updated_by: actorId,
+      updated_at: new Date().toISOString(),
+    },
+  });
+}
+
+async function restoreDefaultPlatformAccess(platformId: string, actorId: string) {
+  const body = {
+    actor_id: actorId,
+    platform_id: platformId,
+  };
+
+  try {
+    await supabaseRest("rpc/restore_default_platform_access", {
+      method: "POST",
+      body,
+    });
+    return;
+  } catch {
+    // Fall through to the direct table updates for databases without the helper RPC.
+  }
+
+  const [agents, folders] = await Promise.all([
+    supabaseRest<{ id: string }[]>("agent_profiles", {
+      query: new URLSearchParams({
+        select: "id",
+        role: "eq.agent",
+        status: "eq.active",
+      }),
+    }),
+    supabaseRest<{ folder_key: string; id: string }[]>("platform_resource_folders", {
+      query: new URLSearchParams({
+        select: "id,folder_key",
+        platform_id: `eq.${platformId}`,
+        is_active: "eq.true",
+      }),
+    }),
+  ]);
+
+  if (!agents.length || !folders.length) return;
+
+  await supabaseRest("agent_platform_access", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    query: new URLSearchParams({ on_conflict: "agent_id,folder_id" }),
+    body: agents.flatMap((agent) =>
+      folders.map((folder) => ({
+        agent_id: agent.id,
+        can_view: folder.folder_key !== "schedule-a",
+        folder_id: folder.id,
+        platform_id: platformId,
+        updated_by: actorId,
+        updated_at: new Date().toISOString(),
+      }))
+    ),
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const context = await requirePortalContext(request);
@@ -117,6 +182,9 @@ export async function PATCH(request: NextRequest) {
     if (!platform) return NextResponse.json({ error: "Platform not found." }, { status: 404 });
 
     await seedPlatformFolders(platform.id);
+    if (body.restoreAccess === true && platform.is_active && platform.portal_status === "active") {
+      await restoreDefaultPlatformAccess(platform.id, context.profile.id);
+    }
     await writeAuditLog(context, "partner_platform.updated", "platforms", id, updates);
     return NextResponse.json({ platform });
   } catch (error) {
@@ -150,7 +218,7 @@ export async function DELETE(request: NextRequest) {
       prefer: "return=representation",
       query: new URLSearchParams({ id: `eq.${id}` }),
       body: {
-        is_active: false,
+        is_active: true,
         last_updated_at: new Date().toISOString(),
         portal_status: "restricted",
       },
@@ -158,6 +226,7 @@ export async function DELETE(request: NextRequest) {
     const platform = platforms[0];
     if (!platform) return NextResponse.json({ error: "Platform not found." }, { status: 404 });
 
+    await restrictPlatformAccess(id, context.profile.id);
     await writeAuditLog(context, "partner_platform.archived", "platforms", id, {
       name: platform.name,
     });

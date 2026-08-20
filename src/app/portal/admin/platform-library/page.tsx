@@ -11,6 +11,7 @@ import {
   FolderPlus,
   Link2,
   Plus,
+  RotateCcw,
   Tags,
   Trash2,
   UploadCloud,
@@ -71,6 +72,7 @@ function displayCategory(platform: PlatformRow) {
 }
 
 function displayStatus(platform: PlatformRow) {
+  if ("is_active" in platform && !platform.is_active) return "Hidden";
   return "status" in platform
     ? platform.status
     : displayPortalStatus(platform.portal_status);
@@ -362,6 +364,38 @@ function AdminPlatformLibraryContent() {
       showPortalToast({ title: "Platform restricted", message: "The platform visibility was updated." });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "The platform could not be restricted.");
+    } finally {
+      setSavingPlatform(false);
+    }
+  }
+
+  async function restorePlatform(id: string, name: string) {
+    setSavingPlatform(true);
+    setError(null);
+
+    try {
+      if (data) {
+        await portalRequest("/api/portal/partner/platforms", {
+          method: "PATCH",
+          body: JSON.stringify({
+            id,
+            isActive: true,
+            restoreAccess: true,
+            status: "active",
+          }),
+        });
+        await refresh();
+      } else {
+        setPreviewPlatforms((current) =>
+          current.map((platform) =>
+            platform.slug === id ? { ...platform, status: "Active" } : platform
+          )
+        );
+      }
+
+      showPortalToast({ title: "Platform restored", message: `${name} is active again.` });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The platform could not be restored.");
     } finally {
       setSavingPlatform(false);
     }
@@ -781,6 +815,7 @@ function AdminPlatformLibraryContent() {
                     { label: "Active", value: "Active" },
                     { label: "Limited", value: "Limited" },
                     { label: "Restricted", value: "Restricted" },
+                    { label: "Hidden", value: "Hidden" },
                   ]}
                 />
               </div>
@@ -848,11 +883,24 @@ function AdminPlatformLibraryContent() {
                     <button
                       type="button"
                       disabled={savingPlatform}
-                      onClick={() => void archivePlatform(platformId(platform))}
+                      onClick={() =>
+                        displayStatus(platform) === "Active" || displayStatus(platform) === "Limited"
+                          ? void archivePlatform(platformId(platform))
+                          : void restorePlatform(platformId(platform), platform.name)
+                      }
                       className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <Archive aria-hidden="true" className="h-4 w-4" />
-                      Restrict
+                      {displayStatus(platform) === "Active" || displayStatus(platform) === "Limited" ? (
+                        <>
+                          <Archive aria-hidden="true" className="h-4 w-4" />
+                          Restrict
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw aria-hidden="true" className="h-4 w-4" />
+                          Restore
+                        </>
+                      )}
                     </button>
                     <button
                       type="button"

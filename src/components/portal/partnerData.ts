@@ -8,7 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type PlatformStatus = "Active" | "Limited" | "Restricted";
+export type PlatformStatus = "Active" | "Limited" | "Restricted" | "Hidden";
 
 export type PlatformFolderKey =
   | "agent-buy-rate"
@@ -384,6 +384,7 @@ export function folderSummaryForKey(folderKey: string, fallback?: string | null)
 }
 
 export function displayPortalStatus(status?: string | null) {
+  if (status === "hidden" || status === "Hidden") return "Hidden";
   if (status === "limited" || status === "Limited") return "Limited";
   if (status === "restricted" || status === "Restricted") return "Restricted";
   return "Active";
@@ -393,5 +394,6 @@ export function statusClassName(status?: string | null) {
   const display = displayPortalStatus(status);
   if (display === "Active") return "bg-emerald-100 text-emerald-900";
   if (display === "Limited") return "bg-amber-100 text-amber-900";
+  if (display === "Hidden") return "bg-slate-200 text-slate-800";
   return "bg-rose-100 text-rose-800";
 }
