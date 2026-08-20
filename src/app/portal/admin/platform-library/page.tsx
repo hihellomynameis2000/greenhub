@@ -140,9 +140,11 @@ function AdminPlatformLibraryContent() {
       ),
     [category, sourcePlatforms, status]
   );
-  const resourceHasContent = Boolean(
-    resourceFile || resourceForm.externalUrl.trim() || resourceForm.description.trim()
-  );
+  const resourceHasContent = (() => {
+    if (resourceForm.resourceType === "link") return Boolean(resourceForm.externalUrl.trim());
+    if (resourceForm.resourceType === "note") return Boolean(resourceForm.description.trim());
+    return Boolean(resourceFile || resourceForm.externalUrl.trim());
+  })();
   const resourceCanSubmit = Boolean(
     activeResourcePlatformId &&
       activeResourceFolderId &&
@@ -208,14 +210,18 @@ function AdminPlatformLibraryContent() {
       return;
     }
 
-    if (!resourceHasContent) {
-      setError("Add a file, link, or description before saving the resource.");
+    if (!data) {
+      setError("A verified admin session is required to save platform resources.");
       return;
     }
 
-    if (!data) {
+    if (!resourceHasContent) {
       setError(
-        "A verified admin session is required to save platform resources."
+        resourceForm.resourceType === "link"
+          ? "Add a link URL before saving this resource."
+          : resourceForm.resourceType === "note"
+            ? "Add note text in the description before saving this resource."
+            : "Upload a file or add a document link before saving this resource."
       );
       return;
     }
@@ -599,6 +605,24 @@ function AdminPlatformLibraryContent() {
                 </div>
               </article>
             ))}
+
+            {filteredPlatforms.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                  <BookOpen aria-hidden="true" className="h-6 w-6" strokeWidth={1.8} />
+                </div>
+                <h3 className="mt-4 text-base font-semibold text-slate-950">
+                  {sourcePlatforms.length
+                    ? "No platforms match those filters"
+                    : "No platforms in the live library yet"}
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-700">
+                  {sourcePlatforms.length
+                    ? "Adjust the category or status filters to return to the full platform inventory."
+                    : "Add a processing platform above, or run the partner portal migration to seed the starter platform library."}
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>

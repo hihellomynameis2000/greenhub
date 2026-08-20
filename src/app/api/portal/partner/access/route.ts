@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  PortalApiError,
   portalErrorResponse,
   requirePortalContext,
   supabaseRest,
   writeAuditLog,
 } from "@/lib/portal/server";
-import type { AgentPlatformAccess } from "@/lib/portal/types";
+import type { AgentPlatformAccess, AgentProfile, PlatformResourceFolder } from "@/lib/portal/types";
 
 type AccessRuleInput = {
   agentId?: unknown;
@@ -58,6 +59,45 @@ export async function POST(request: NextRequest) {
 
     if (!rules.length) {
       return NextResponse.json({ error: "At least one access rule is required." }, { status: 400 });
+    }
+
+    const agentIds = Array.from(new Set(rules.map((rule) => rule.agent_id)));
+    const folderIds = Array.from(new Set(rules.map((rule) => rule.folder_id)));
+    const platformIds = Array.from(new Set(rules.map((rule) => rule.platform_id)));
+
+    const [agents, folders] = await Promise.all([
+      supabaseRest<Pick<AgentProfile, "id" | "role" | "status">[]>("agent_profiles", {
+        query: new URLSearchParams({
+          select: "id,role,status",
+          id: `in.(${agentIds.join(",")})`,
+        }),
+      }),
+      supabaseRest<Pick<PlatformResourceFolder, "id" | "platform_id">[]>("platform_resource_folders", {
+        query: new URLSearchParams({
+          select: "id,platform_id",
+          id: `in.(${folderIds.join(",")})`,
+        }),
+      }),
+    ]);
+
+    const validAgentIds = new Set(
+      agents
+        .filter((agent) => agent.role === "agent" && agent.status === "active")
+        .map((agent) => agent.id)
+    );
+    const folderPlatform = new Map(folders.map((folder) => [folder.id, folder.platform_id]));
+
+    if (validAgentIds.size !== agentIds.length) {
+      throw new PortalApiError("Access rules can only be saved for active agent profiles.", 400);
+    }
+    if (platformIds.length !== 1) {
+      throw new PortalApiError("Save one platform's folder access rules at a time.", 400);
+    }
+    if (
+      folders.length !== folderIds.length ||
+      rules.some((rule) => folderPlatform.get(rule.folder_id) !== rule.platform_id)
+    ) {
+      throw new PortalApiError("Folder access rules do not match the selected platform.", 400);
     }
 
     const access = await supabaseRest<AgentPlatformAccess[]>("agent_platform_access", {

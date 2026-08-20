@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   optionalString,
+  PortalApiError,
   portalErrorResponse,
   requirePortalContext,
   requiredString,
   supabaseRest,
   writeAuditLog,
 } from "@/lib/portal/server";
-import type { PlatformResource } from "@/lib/portal/types";
+import { agentCanViewPlatformFolder } from "@/lib/portal/partner";
+import type { PlatformResource, PlatformResourceFolder } from "@/lib/portal/types";
 
 function validResourceType(value: unknown): "document" | "link" | "note" {
   if (value === "link" || value === "note") return value;
@@ -38,6 +40,24 @@ function resourcePayload(body: Record<string, unknown>, actorId: string) {
   };
 }
 
+async function assertFolderBelongsToPlatform(platformId: string, folderId: string) {
+  const folders = await supabaseRest<Pick<PlatformResourceFolder, "id" | "platform_id">[]>(
+    "platform_resource_folders",
+    {
+      query: new URLSearchParams({
+        select: "id,platform_id",
+        id: `eq.${folderId}`,
+        limit: "1",
+      }),
+    }
+  );
+  const folder = folders[0];
+
+  if (!folder || folder.platform_id !== platformId) {
+    throw new PortalApiError("The selected folder does not belong to this platform.", 400);
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const context = await requirePortalContext(request);
@@ -58,16 +78,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ resources });
     }
 
-    const accessRows = await supabaseRest<{ can_view: boolean }[]>("agent_platform_access", {
-      query: new URLSearchParams({
-        select: "can_view",
-        agent_id: `eq.${context.profile.id}`,
-        folder_id: `eq.${folderId}`,
-        limit: "1",
-      }),
-    });
-
-    if (accessRows[0]?.can_view === false) {
+    if (!(await agentCanViewPlatformFolder(context, folderId))) {
       return NextResponse.json({ error: "You do not have access to this folder." }, { status: 403 });
     }
 
@@ -82,6 +93,7 @@ export async function POST(request: NextRequest) {
     const context = await requirePortalContext(request, "admin");
     const body = (await request.json()) as Record<string, unknown>;
     const payload = resourcePayload(body, context.profile.id);
+    await assertFolderBelongsToPlatform(payload.platform_id, payload.folder_id);
 
     const resources = await supabaseRest<PlatformResource[]>("platform_resources", {
       method: "POST",
@@ -111,6 +123,7 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json()) as Record<string, unknown>;
     const id = requiredString(body.id, "Resource ID");
     const payload = resourcePayload(body, context.profile.id);
+    await assertFolderBelongsToPlatform(payload.platform_id, payload.folder_id);
 
     const resources = await supabaseRest<PlatformResource[]>("platform_resources", {
       method: "PATCH",

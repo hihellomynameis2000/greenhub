@@ -71,9 +71,7 @@ export default function AgentPlatformDetailPage() {
 function AgentPlatformDetailContent() {
   const params = useParams<{ slug: string }>();
   const { data } = usePortalData();
-  const platforms: PlatformRow[] = data?.partnerPlatforms.length
-    ? data.partnerPlatforms
-    : partnerPlatforms;
+  const platforms: PlatformRow[] = data ? data.partnerPlatforms : partnerPlatforms;
   const platform = platforms.find(
     (item) => item.slug === params.slug || ("id" in item && item.id === params.slug)
   );

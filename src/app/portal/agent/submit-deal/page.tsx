@@ -46,7 +46,7 @@ function AgentSubmitDealContent() {
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const platformOptions = data?.partnerPlatforms.length
+  const platformOptions = data
     ? data.partnerPlatforms.map((platform) => ({
         label: platform.name,
         value: platform.id,

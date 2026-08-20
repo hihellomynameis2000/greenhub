@@ -28,6 +28,7 @@ import { PortalToastViewport } from "./PortalToast";
 export { portalInputClass } from "./portalFieldStyles";
 
 type PortalLink = {
+  badge?: string;
   href: string;
   icon: LucideIcon;
   label: string;
@@ -35,7 +36,7 @@ type PortalLink = {
 
 const adminLinks: PortalLink[] = [
   { href: "/portal/admin", icon: LayoutDashboard, label: "Overview" },
-  { href: "/portal/admin/crm", icon: BriefcaseBusiness, label: "CRM" },
+  { badge: "Coming soon", href: "/portal/admin/crm", icon: BriefcaseBusiness, label: "CRM" },
   { href: "/portal/admin/platform-library", icon: BookOpen, label: "Platform Library" },
   { href: "/portal/admin/folder-access", icon: FolderLock, label: "Folder Access" },
   { href: "/portal/admin/agents", icon: Users, label: "Agents" },
@@ -45,7 +46,7 @@ const adminLinks: PortalLink[] = [
 
 const agentLinks: PortalLink[] = [
   { href: "/portal/agent", icon: LayoutDashboard, label: "Overview" },
-  { href: "/portal/agent/crm", icon: BriefcaseBusiness, label: "CRM" },
+  { badge: "Coming soon", href: "/portal/agent/crm", icon: BriefcaseBusiness, label: "CRM" },
   { href: "/portal/agent/platforms", icon: BookOpen, label: "Platforms" },
   { href: "/portal/agent/submit-deal", icon: Send, label: "Submit Deal" },
   { href: "/portal/agent/accounts", icon: Building2, label: "Accounts" },
@@ -212,7 +213,7 @@ export function PortalShell({
           <div className="mb-2 px-3 text-xs font-medium text-slate-500">
             {role === "admin" ? "Partner admin" : "Partner workspace"}
           </div>
-          {links.map(({ href, icon: Icon, label }) => {
+          {links.map(({ badge, href, icon: Icon, label }) => {
             const active = linkIsActive(href);
 
             return (
@@ -226,7 +227,16 @@ export function PortalShell({
                 }`}
               >
                 <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                {label}
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {badge ? (
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      active ? "bg-white/70 text-slate-700" : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                ) : null}
               </Link>
             );
           })}

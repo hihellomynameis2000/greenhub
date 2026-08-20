@@ -290,12 +290,6 @@ export default function LoginPage() {
           </form>
         )}
 
-        <div className="border-t border-slate-200 bg-slate-50 px-7 py-5 sm:px-8">
-          <p className="text-sm font-semibold text-slate-900">Production access only</p>
-          <p className="mt-1 text-xs leading-5 text-slate-600">
-            Password and email-code verification are required for every admin and agent sign-in.
-          </p>
-        </div>
       </div>
     </div>
   );

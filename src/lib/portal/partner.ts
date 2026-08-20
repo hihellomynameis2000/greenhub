@@ -237,6 +237,51 @@ export async function seedPlatformFolders(platformId: string) {
   });
 }
 
+export async function agentCanViewPlatformFolder(context: PortalContext, folderId: string) {
+  if (context.profile.role === "admin") return true;
+
+  const accessRows = await supabaseRest<Pick<AgentPlatformAccess, "can_view">[]>(
+    "agent_platform_access",
+    {
+      query: new URLSearchParams({
+        select: "can_view",
+        agent_id: `eq.${context.profile.id}`,
+        folder_id: `eq.${folderId}`,
+        limit: "1",
+      }),
+    }
+  );
+
+  if (accessRows[0]) return accessRows[0].can_view;
+
+  const folders = await supabaseRest<Pick<PlatformResourceFolder, "folder_key" | "platform_id">[]>(
+    "platform_resource_folders",
+    {
+      query: new URLSearchParams({
+        select: "folder_key,platform_id",
+        id: `eq.${folderId}`,
+        is_active: "eq.true",
+        limit: "1",
+      }),
+    }
+  );
+  const folder = folders[0];
+  if (!folder) return false;
+
+  const platforms = await supabaseRest<Pick<Platform, "portal_status">[]>("platforms", {
+    query: new URLSearchParams({
+      select: "portal_status",
+      id: `eq.${folder.platform_id}`,
+      is_active: "eq.true",
+      limit: "1",
+    }),
+  });
+  const platform = platforms[0];
+  if (!platform) return false;
+
+  return normalizePortalStatus(platform.portal_status) !== "restricted" && folder.folder_key !== "schedule-a";
+}
+
 export function assertPartnerLibraryAvailable(error: unknown): never {
   if (
     error instanceof PortalApiError &&

@@ -8,6 +8,7 @@ import {
   requiredString,
   supabaseRest,
 } from "@/lib/portal/server";
+import { agentCanViewPlatformFolder } from "@/lib/portal/partner";
 import type { PlatformResource } from "@/lib/portal/types";
 
 function supabaseServiceClient() {
@@ -46,19 +47,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Resource not found." }, { status: 404 });
     }
 
-    if (context.profile.role === "agent") {
-      const accessRows = await supabaseRest<{ can_view: boolean }[]>("agent_platform_access", {
-        query: new URLSearchParams({
-          select: "can_view",
-          agent_id: `eq.${context.profile.id}`,
-          folder_id: `eq.${resource.folder_id}`,
-          limit: "1",
-        }),
-      });
-
-      if (accessRows[0]?.can_view === false) {
-        return NextResponse.json({ error: "You do not have access to this resource." }, { status: 403 });
-      }
+    if (context.profile.role === "agent" && !(await agentCanViewPlatformFolder(context, resource.folder_id))) {
+      return NextResponse.json({ error: "You do not have access to this resource." }, { status: 403 });
     }
 
     if (resource.external_url) {

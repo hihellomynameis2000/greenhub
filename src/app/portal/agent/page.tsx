@@ -105,7 +105,7 @@ function AgentDashboardContent() {
   const openDealCount = liveDeals
     ? liveDeals.filter((deal) => !["approved", "declined"].includes(deal.stage)).length
     : crmDeals.length - approvedDeals;
-  const dashboardUpdates = data?.platformUpdates.length
+  const dashboardUpdates = data
     ? data.platformUpdates.map((update) => ({
         body: update.message,
         date: new Date(update.published_at ?? update.created_at).toLocaleDateString("en-US", {
@@ -116,7 +116,7 @@ function AgentDashboardContent() {
         title: update.title,
       }))
     : platformUpdates;
-  const platformCount = data?.partnerPlatforms.length || partnerPlatforms.length;
+  const platformCount = data ? data.partnerPlatforms.length : partnerPlatforms.length;
   const nextFollowUp = liveDeals?.find((deal) => deal.next_follow_up)?.next_follow_up ?? crmDeals[0]?.nextFollowUp ?? "Today";
 
   return (

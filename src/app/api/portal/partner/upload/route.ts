@@ -57,6 +57,24 @@ function hasAllowedExtension(name: string) {
   return false;
 }
 
+async function assertFolderBelongsToPlatform(platformId: string, folderId: string) {
+  const folders = await supabaseRest<{ id: string; platform_id: string }[]>(
+    "platform_resource_folders",
+    {
+      query: new URLSearchParams({
+        select: "id,platform_id",
+        id: `eq.${folderId}`,
+        limit: "1",
+      }),
+    }
+  );
+  const folder = folders[0];
+
+  if (!folder || folder.platform_id !== platformId) {
+    throw new PortalApiError("The selected folder does not belong to this platform.", 400);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const context = await requirePortalContext(request, "admin");
@@ -78,6 +96,7 @@ export async function POST(request: NextRequest) {
     const platformId = requiredString(formData.get("platformId"), "Platform");
     const folderId = requiredString(formData.get("folderId"), "Folder");
     const title = requiredString(formData.get("title") || file.name, "Resource title");
+    await assertFolderBelongsToPlatform(platformId, folderId);
     const description =
       typeof formData.get("description") === "string"
         ? String(formData.get("description")).trim() || null
@@ -95,7 +114,15 @@ export async function POST(request: NextRequest) {
 
     if (uploadError || !uploadData) {
       console.error("Platform resource upload failed", uploadError);
-      return NextResponse.json({ error: "Platform resource upload failed." }, { status: 500 });
+      return NextResponse.json(
+        {
+          error:
+            uploadError?.message?.toLowerCase().includes("bucket")
+              ? "Platform resource storage is not ready. Run the partner portal migration and verify the platform-resources bucket."
+              : "Platform resource upload failed.",
+        },
+        { status: 500 }
+      );
     }
 
     const resources = await supabaseRest<PlatformResource[]>("platform_resources", {

@@ -47,9 +47,7 @@ function AgentPlatformsContent() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All categories");
   const [status, setStatus] = useState("All statuses");
-  const sourcePlatforms: PlatformRow[] = data?.partnerPlatforms.length
-    ? data.partnerPlatforms
-    : partnerPlatforms;
+  const sourcePlatforms: PlatformRow[] = data ? data.partnerPlatforms : partnerPlatforms;
   const categoryOptions = useMemo(
     () =>
       Array.from(
@@ -164,8 +162,14 @@ function AgentPlatformsContent() {
 
       {platforms.length === 0 ? (
         <section className="mt-6 rounded-lg border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
-          <p className="text-sm font-semibold text-slate-950">No platforms match those filters.</p>
-          <p className="mt-1 text-sm text-slate-600">Try searching a category, bank, or program name.</p>
+          <p className="text-sm font-semibold text-slate-950">
+            {sourcePlatforms.length ? "No platforms match those filters." : "No platforms are available yet."}
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            {sourcePlatforms.length
+              ? "Try searching a category, bank, or program name."
+              : "Ask an administrator to publish platform folders for your account."}
+          </p>
         </section>
       ) : null}
     </>
