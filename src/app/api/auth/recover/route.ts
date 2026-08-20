@@ -27,12 +27,12 @@ export async function POST(request: NextRequest) {
       {
         query: new URLSearchParams({
           select: "email,name,role",
-          email: `eq.${email}`,
-          limit: "1",
+          email: `ilike.${email}`,
+          limit: "5",
         }),
       }
     );
-    const profile = profiles[0];
+    const profile = profiles.find((candidate) => candidate.email.toLowerCase() === email);
     const expectedRole = portalRoleForHost(requestHost(request.headers.get("host")));
 
     if (!profile) return NextResponse.json(successResponse);

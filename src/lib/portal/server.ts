@@ -180,13 +180,14 @@ export async function requirePortalContext(
     throw new PortalApiError("The signed-in user does not have an email address.", 403);
   }
 
+  const email = user.email.toLowerCase();
   const query = new URLSearchParams({
     select: "*",
-    email: `eq.${user.email}`,
-    limit: "1",
+    email: `ilike.${email}`,
+    limit: "5",
   });
   const profiles = await supabaseRest<AgentProfile[]>("agent_profiles", { query });
-  const profile = profiles[0];
+  const profile = profiles.find((candidate) => candidate.email.toLowerCase() === email);
 
   if (!profile || profile.status !== "active") {
     throw new PortalApiError("You do not have an active portal profile.", 403);

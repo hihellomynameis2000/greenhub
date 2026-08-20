@@ -89,17 +89,18 @@ export async function POST(request: NextRequest) {
       throw new PortalApiError("This secure link is invalid or has expired.", 400);
     }
 
+    const email = data.user.email.toLowerCase();
     const profiles = await supabaseRest<Pick<AgentProfile, "auth_user_id" | "email" | "id" | "role" | "status">[]>(
       "agent_profiles",
       {
         query: new URLSearchParams({
           select: "id,email,role,status,auth_user_id",
-          email: `eq.${data.user.email.toLowerCase()}`,
-          limit: "1",
+          email: `ilike.${email}`,
+          limit: "5",
         }),
       }
     );
-    const profile = profiles[0];
+    const profile = profiles.find((candidate) => candidate.email.toLowerCase() === email);
 
     if (!profile || profile.status !== "active" || profile.role !== payload.role) {
       throw new PortalApiError("This secure link is invalid or has expired.", 400);

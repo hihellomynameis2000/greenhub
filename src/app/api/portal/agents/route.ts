@@ -113,14 +113,14 @@ export async function POST(request: NextRequest) {
     resendConfig();
 
     const existingQuery = new URLSearchParams({
-      select: "id",
-      email: `eq.${email}`,
-      limit: "1",
+      select: "id,email",
+      email: `ilike.${email}`,
+      limit: "5",
     });
-    const existing = await supabaseRest<{ id: string }[]>("agent_profiles", {
+    const existing = await supabaseRest<{ email: string; id: string }[]>("agent_profiles", {
       query: existingQuery,
     });
-    if (existing.length) {
+    if (existing.some((profile) => profile.email.toLowerCase() === email)) {
       return NextResponse.json(
         { error: "A portal profile already exists for this email address." },
         { status: 409 }
