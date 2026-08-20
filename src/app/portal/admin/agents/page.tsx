@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { Check, Pencil, Trash2, X } from "lucide-react";
+import { Check, Copy, KeyRound, Pencil, Trash2, X } from "lucide-react";
 import { agents as demoAgents } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
@@ -36,6 +36,7 @@ function AdminAgentsContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<AgentForm>(initialForm);
   const [savingAgentId, setSavingAgentId] = useState<string | null>(null);
+  const [resetLinkAgentId, setResetLinkAgentId] = useState<string | null>(null);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
   const agentRows = data?.agents ?? demoAgents;
@@ -120,6 +121,29 @@ function AdminAgentsContent() {
       );
     } finally {
       setSavingAgentId(null);
+    }
+  }
+
+  async function copyResetLink(agent: AgentProfile) {
+    setResetLinkAgentId(agent.id);
+    setDirectoryError(null);
+
+    try {
+      const result = await portalRequest<{ resetUrl: string }>("/api/portal/agents/reset-link", {
+        method: "POST",
+        body: JSON.stringify({ id: agent.id }),
+      });
+      await navigator.clipboard.writeText(result.resetUrl);
+      showPortalToast({
+        title: "Reset link copied",
+        message: `A secure setup link for ${agent.name} was copied to your clipboard.`,
+      });
+    } catch (requestError) {
+      setDirectoryError(
+        requestError instanceof Error ? requestError.message : "The reset link could not be created."
+      );
+    } finally {
+      setResetLinkAgentId(null);
     }
   }
 
@@ -264,6 +288,20 @@ function AdminAgentsContent() {
                     <td className="px-5 py-3.5">
                       {liveAgent ? (
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Copy reset link for ${agent.name}`}
+                            title="Copy reset link"
+                            onClick={() => void copyResetLink(agent)}
+                            disabled={resetLinkAgentId === agent.id || savingAgentId === agent.id}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {resetLinkAgentId === agent.id ? (
+                              <Copy aria-hidden="true" className="h-4 w-4" />
+                            ) : (
+                              <KeyRound aria-hidden="true" className="h-4 w-4" />
+                            )}
+                          </button>
                           <button
                             type="button"
                             aria-label={`Edit ${agent.name}`}
