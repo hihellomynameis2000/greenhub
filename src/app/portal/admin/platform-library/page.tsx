@@ -1,14 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import {
   Archive,
-  ArrowRight,
   BookOpen,
+  Download,
+  ExternalLink,
+  Eye,
   FilePlus2,
+  FileText,
   FolderPlus,
   Link2,
   Plus,
+  Tags,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -26,7 +30,11 @@ import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/P
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { showPortalToast } from "@/components/portal/PortalToast";
 import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
-import type { PartnerPlatformRecord, PlatformFolderWithResources } from "@/lib/portal/types";
+import type {
+  PartnerPlatformRecord,
+  PlatformFolderWithResources,
+  PlatformResource,
+} from "@/lib/portal/types";
 
 const initialPlatform = {
   category: "Cashless / Debit",
@@ -88,6 +96,12 @@ function folderResources(folder: PlatformFolderWithResources) {
   return folder.resources ?? folder.platform_resources ?? [];
 }
 
+function resourcesForFolder(
+  folder: PartnerPlatform["folders"][number] | PlatformFolderWithResources
+) {
+  return "resources" in folder ? folderResources(folder) : folder.items;
+}
+
 export default function AdminPlatformLibraryPage() {
   return (
     <PortalShell role="admin">
@@ -100,11 +114,17 @@ function AdminPlatformLibraryContent() {
   const { data, refresh } = usePortalData();
   const liveMode = Boolean(data);
   const [platformForm, setPlatformForm] = useState(initialPlatform);
+  const [categoryForm, setCategoryForm] = useState("");
   const [resourceForm, setResourceForm] = useState<ResourceForm>(initialResource);
   const [resourceFile, setResourceFile] = useState<File | null>(null);
+  const [previewCategoryNames, setPreviewCategoryNames] = useState(
+    platformCategories.filter((item) => item !== "All categories")
+  );
   const [previewPlatforms, setPreviewPlatforms] = useState<PartnerPlatform[]>(partnerPlatforms);
   const [category, setCategory] = useState("All categories");
   const [status, setStatus] = useState("All statuses");
+  const [deletingPlatformId, setDeletingPlatformId] = useState<string | null>(null);
+  const [savingCategory, setSavingCategory] = useState(false);
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [savingResource, setSavingResource] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,17 +138,27 @@ function AdminPlatformLibraryContent() {
   const selectedFolders = selectedPlatform?.folders ?? [];
   const activeResourceFolderId =
     resourceForm.folderId || (selectedFolders[0] ? folderId(selectedFolders[0]) : "");
+  const activeResourceFolder =
+    selectedFolders.find((folder) => folderId(folder) === activeResourceFolderId) ??
+    selectedFolders[0];
   const categoryOptions = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...platformCategories,
-          ...sourcePlatforms
-            .map((platform) => platform.category)
-            .filter((value): value is string => Boolean(value)),
-        ])
-      ),
-    [sourcePlatforms]
+    () => {
+      const liveCategories =
+        data?.platformCategories?.map((item) => item.name).filter(Boolean) ?? previewCategoryNames;
+
+      return [
+        "All categories",
+        ...Array.from(
+          new Set([
+            ...liveCategories,
+            ...sourcePlatforms
+              .map((platform) => platform.category)
+              .filter((value): value is string => Boolean(value)),
+          ])
+        ).sort((left, right) => left.localeCompare(right)),
+      ];
+    },
+    [data?.platformCategories, previewCategoryNames, sourcePlatforms]
   );
 
   const filteredPlatforms = useMemo(
@@ -161,6 +191,42 @@ function AdminPlatformLibraryContent() {
       }
       return next;
     });
+  }
+
+  async function addCategory() {
+    const name = categoryForm.trim().replace(/\s+/g, " ");
+    if (!name) {
+      setError("Category name is required.");
+      return;
+    }
+
+    setSavingCategory(true);
+    setError(null);
+
+    try {
+      if (data) {
+        await portalRequest("/api/portal/partner/categories", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        });
+        await refresh();
+      } else {
+        setPreviewCategoryNames((current) =>
+          current.some((item) => item.toLowerCase() === name.toLowerCase())
+            ? current
+            : [...current, name]
+        );
+      }
+
+      setPlatformForm((current) => ({ ...current, category: name }));
+      setCategory(name);
+      setCategoryForm("");
+      showPortalToast({ title: "Category added", message: `${name} is ready for platforms.` });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The category could not be saved.");
+    } finally {
+      setSavingCategory(false);
+    }
   }
 
   async function addPlatform() {
@@ -301,6 +367,69 @@ function AdminPlatformLibraryContent() {
     }
   }
 
+  async function deletePlatform(id: string, name: string) {
+    if (!window.confirm(`Delete ${name} from the platform library? This removes its folders and saved resources.`)) {
+      return;
+    }
+
+    setDeletingPlatformId(id);
+    setError(null);
+
+    try {
+      if (data) {
+        await portalRequest(`/api/portal/partner/platforms?id=${encodeURIComponent(id)}&mode=delete`, {
+          method: "DELETE",
+        });
+        await refresh();
+      } else {
+        setPreviewPlatforms((current) => current.filter((platform) => platform.slug !== id));
+      }
+
+      if (activeResourcePlatformId === id) {
+        setResourceForm(initialResource);
+      }
+
+      showPortalToast({ title: "Platform deleted", message: `${name} was removed from the library.` });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The platform could not be deleted.");
+    } finally {
+      setDeletingPlatformId(null);
+    }
+  }
+
+  function previewPlatform(platform: PlatformRow) {
+    const folder =
+      platform.folders.find((item) => resourcesForFolder(item).length > 0) ?? platform.folders[0];
+
+    setResourceForm((current) => ({
+      ...current,
+      folderId: folder ? folderId(folder) : "",
+      platformId: platformId(platform),
+    }));
+
+    window.requestAnimationFrame(() => {
+      document.getElementById("folder-resource-preview")?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
+  }
+
+  async function openResource(resource: PlatformResource) {
+    if (resource.resource_type === "note" && !resource.external_url && !resource.storage_path) {
+      showPortalToast({
+        title: resource.title,
+        message: resource.description || "This note does not have a file or link attached.",
+      });
+      return;
+    }
+
+    const result = await portalRequest<{ url: string }>(
+      `/api/portal/partner/resource-download?id=${encodeURIComponent(resource.id)}`
+    );
+    window.open(result.url, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <>
       <PageHeader
@@ -316,6 +445,44 @@ function AdminPlatformLibraryContent() {
 
       <section className="grid gap-6 xl:grid-cols-[430px_1fr]">
         <div className="space-y-6">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                <Tags aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
+              </span>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">Add Category</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-700">
+                  Create library categories such as POS, Cashless, ACH, or High Risk.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <input
+                className={portalInputClass}
+                placeholder="POS"
+                value={categoryForm}
+                onChange={(event) => setCategoryForm(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void addCategory();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={savingCategory}
+                onClick={() => void addCategory()}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                {savingCategory ? "Saving..." : "Add Category"}
+              </button>
+            </div>
+          </div>
+
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
@@ -494,6 +661,99 @@ function AdminPlatformLibraryContent() {
               {savingResource ? "Saving..." : "Save Resource"}
             </button>
           </div>
+
+          <div id="folder-resource-preview" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                <Eye aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
+              </span>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">Folder Preview</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-700">
+                  {selectedPlatform?.name ?? "Select a platform"} ·{" "}
+                  {activeResourceFolder?.name ?? "Select a folder"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200">
+              {activeResourceFolder ? (
+                resourcesForFolder(activeResourceFolder).length ? (
+                  resourcesForFolder(activeResourceFolder).map((resource) =>
+                    typeof resource === "string" ? (
+                      <div key={resource} className="flex items-start gap-3 bg-white p-3">
+                        <FileText aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-600" />
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">{resource}</p>
+                          <p className="mt-0.5 text-xs text-slate-600">Demo resource item</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={resource.id} className="bg-white p-3">
+                        <div className="flex items-start gap-3">
+                          <FileText aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-600" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-slate-950">{resource.title}</p>
+                            <p className="mt-0.5 text-xs leading-5 text-slate-600">
+                              {resource.description || resource.file_name || resource.resource_type}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 pl-7">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openResource(resource).catch((requestError) =>
+                                showPortalToast({
+                                  title: "Resource unavailable",
+                                  message:
+                                    requestError instanceof Error
+                                      ? requestError.message
+                                      : "The resource could not be opened.",
+                                })
+                              )
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                          >
+                            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                            Open
+                          </button>
+                          {resource.storage_path || resource.external_url ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openResource(resource).catch((requestError) =>
+                                  showPortalToast({
+                                    title: "Download unavailable",
+                                    message:
+                                      requestError instanceof Error
+                                        ? requestError.message
+                                        : "The resource could not be downloaded.",
+                                  })
+                                )
+                              }
+                              className="inline-flex items-center gap-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-900"
+                            >
+                              <Download aria-hidden="true" className="h-3.5 w-3.5" />
+                              Download
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    )
+                  )
+                ) : (
+                  <div className="bg-slate-50 p-4 text-sm text-slate-700">
+                    No resources have been added to this folder yet.
+                  </div>
+                )
+              ) : (
+                <div className="bg-slate-50 p-4 text-sm text-slate-700">
+                  Select a platform folder to preview resources.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -594,13 +854,23 @@ function AdminPlatformLibraryContent() {
                       <Archive aria-hidden="true" className="h-4 w-4" />
                       Restrict
                     </button>
-                    <Link
-                      href={`/portal/agent/platforms/${platformSlug(platform)}`}
+                    <button
+                      type="button"
+                      disabled={deletingPlatformId === platformId(platform)}
+                      onClick={() => void deletePlatform(platformId(platform), platform.name)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      {deletingPlatformId === platformId(platform) ? "Deleting..." : "Delete"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => previewPlatform(platform)}
                       className="inline-flex items-center gap-2 rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
                     >
                       Preview
-                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                    </Link>
+                      <Eye aria-hidden="true" className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </article>

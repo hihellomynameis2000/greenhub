@@ -5,6 +5,7 @@ import type {
   AgentPlatformAccess,
   PartnerPlatformRecord,
   Platform,
+  PlatformCategory,
   PlatformFolderWithResources,
   PlatformResource,
   PlatformResourceFolder,
@@ -209,6 +210,12 @@ export async function fetchPartnerLibrary(context: PortalContext) {
   const platformAccess = await supabaseRest<AgentPlatformAccess[]>("agent_platform_access", {
     query: accessQuery,
   });
+  const platformCategories = await supabaseRest<PlatformCategory[]>("platform_categories", {
+    query: new URLSearchParams({
+      select: "*",
+      order: "sort_order.asc,name.asc",
+    }),
+  });
 
   return {
     partnerPlatforms: normalizePartnerPlatforms(
@@ -220,6 +227,7 @@ export async function fetchPartnerLibrary(context: PortalContext) {
       platformAccess
     ),
     platformAccess,
+    platformCategories,
   };
 }
 
@@ -285,7 +293,7 @@ export async function agentCanViewPlatformFolder(context: PortalContext, folderI
 export function assertPartnerLibraryAvailable(error: unknown): never {
   if (
     error instanceof PortalApiError &&
-    /agent_platform_access|platform_resource_folders|platform_resources|platform_updates|portal_deals|schema cache|column/i.test(
+    /agent_platform_access|platform_categories|platform_resource_folders|platform_resources|platform_updates|portal_deals|schema cache|column/i.test(
       error.message
     )
   ) {

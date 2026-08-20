@@ -28,6 +28,13 @@ export type Platform = {
   updated_at?: string | null;
 };
 
+export type PlatformCategory = {
+  created_at: string;
+  id: string;
+  name: string;
+  sort_order: number;
+};
+
 export type PlatformResourceFolder = {
   created_at: string;
   description: string | null;
@@ -210,6 +217,7 @@ export type PortalBootstrap = {
   notifications: ResidualNotification[];
   partnerPlatforms: PartnerPlatformRecord[];
   platformAccess: AgentPlatformAccess[];
+  platformCategories: PlatformCategory[];
   platformUpdates: PlatformUpdate[];
   platforms: Platform[];
   profile: AgentProfile;

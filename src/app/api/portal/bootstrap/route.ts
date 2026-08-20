@@ -15,6 +15,7 @@ import type {
   MonthlyResidual,
   PartnerPlatformRecord,
   Platform,
+  PlatformCategory,
   PlatformUpdate,
   PortalBootstrap,
   PortalDeal,
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
 
     let partnerPlatforms: PartnerPlatformRecord[] = [];
     let platformAccess: AgentPlatformAccess[] = [];
+    let platformCategories: PlatformCategory[] = [];
     let platformUpdates: PlatformUpdate[] = [];
     let portalDeals: PortalDeal[] = [];
 
@@ -89,6 +91,7 @@ export async function GET(request: NextRequest) {
       const library = await fetchPartnerLibrary(context);
       partnerPlatforms = library.partnerPlatforms;
       platformAccess = library.platformAccess;
+      platformCategories = library.platformCategories;
 
       const updateQuery = new URLSearchParams({
         select: "*",
@@ -120,6 +123,7 @@ export async function GET(request: NextRequest) {
       notifications,
       partnerPlatforms,
       platformAccess,
+      platformCategories,
       platformUpdates,
       platforms,
       profile: context.profile,

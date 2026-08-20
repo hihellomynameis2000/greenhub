@@ -128,6 +128,22 @@ export async function DELETE(request: NextRequest) {
   try {
     const context = await requirePortalContext(request, "admin");
     const id = requiredString(request.nextUrl.searchParams.get("id"), "Platform ID");
+    const hardDelete = request.nextUrl.searchParams.get("mode") === "delete";
+
+    if (hardDelete) {
+      const platforms = await supabaseRest<Platform[]>("platforms", {
+        method: "DELETE",
+        prefer: "return=representation",
+        query: new URLSearchParams({ id: `eq.${id}` }),
+      });
+      const platform = platforms[0];
+      if (!platform) return NextResponse.json({ error: "Platform not found." }, { status: 404 });
+
+      await writeAuditLog(context, "partner_platform.deleted", "platforms", id, {
+        name: platform.name,
+      });
+      return NextResponse.json({ platform });
+    }
 
     const platforms = await supabaseRest<Platform[]>("platforms", {
       method: "PATCH",
