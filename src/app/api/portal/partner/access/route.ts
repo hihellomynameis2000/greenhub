@@ -63,7 +63,6 @@ export async function POST(request: NextRequest) {
 
     const agentIds = Array.from(new Set(rules.map((rule) => rule.agent_id)));
     const folderIds = Array.from(new Set(rules.map((rule) => rule.folder_id)));
-    const platformIds = Array.from(new Set(rules.map((rule) => rule.platform_id)));
 
     const [agents, folders] = await Promise.all([
       supabaseRest<Pick<AgentProfile, "id" | "role" | "status">[]>("agent_profiles", {
@@ -89,9 +88,6 @@ export async function POST(request: NextRequest) {
 
     if (validAgentIds.size !== agentIds.length) {
       throw new PortalApiError("Access rules can only be saved for active agent profiles.", 400);
-    }
-    if (platformIds.length !== 1) {
-      throw new PortalApiError("Save one platform's folder access rules at a time.", 400);
     }
     if (
       folders.length !== folderIds.length ||

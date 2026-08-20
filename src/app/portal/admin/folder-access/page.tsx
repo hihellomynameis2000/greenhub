@@ -67,6 +67,11 @@ function accessKey(agent: AgentRow | string, platform: PlatformRow | string, fol
   return `${currentAgentId}:${currentPlatformId}:${currentFolderId}`;
 }
 
+function parseAccessKey(key: string) {
+  const [agentId, platformId, folderId] = key.split(":");
+  return { agentId, folderId, platformId };
+}
+
 function defaultAllowed(platform: PlatformRow, folder: FolderRow) {
   const status = "status" in platform
     ? platform.status
@@ -124,6 +129,8 @@ function AdminFolderAccessContent() {
   );
   const [selectedPlatformId, setSelectedPlatformId] = useState(platforms[0] ? platformId(platforms[0]) : "");
   const [agentSearch, setAgentSearch] = useState("");
+  const [globalAgentId, setGlobalAgentId] = useState("");
+  const [globalFolderKey, setGlobalFolderKey] = useState("documents");
   const [access, setAccess] = useState<AccessMap>(() => buildAccessMap(platforms, agents, data?.platformAccess ?? []));
   const [savedAccess, setSavedAccess] = useState<AccessMap>(() => buildAccessMap(platforms, agents, data?.platformAccess ?? []));
   const [saving, setSaving] = useState(false);
@@ -140,6 +147,13 @@ function AdminFolderAccessContent() {
           ? platformId(platforms[0])
           : ""
     );
+    setGlobalAgentId((current) =>
+      agents.some((agent) => agentId(agent) === current)
+        ? current
+        : agents[0]
+          ? agentId(agents[0])
+          : ""
+    );
   }, [agents, data?.platformAccess, platforms]);
 
   const selectedPlatform =
@@ -154,6 +168,15 @@ function AdminFolderAccessContent() {
         agent.email.toLowerCase().includes(query)
     );
   }, [agentSearch, agents]);
+  const folderTypeOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const platform of platforms) {
+      for (const folder of platform.folders) {
+        options.set(folderKey(folder), folder.name);
+      }
+    }
+    return Array.from(options.entries()).map(([value, label]) => ({ label, value }));
+  }, [platforms]);
 
   const dirtyCount = useMemo(
     () => Object.keys(access).filter((key) => access[key] !== savedAccess[key]).length,
@@ -214,6 +237,22 @@ function AdminFolderAccessContent() {
     }));
   }
 
+  function setAgentFolderTypeAcrossPlatforms(allowed: boolean) {
+    const agent = agents.find((item) => agentId(item) === globalAgentId);
+    if (!agent || !globalFolderKey) return;
+
+    const entries = platforms.flatMap((platform) =>
+      platform.folders
+        .filter((folder) => folderKey(folder) === globalFolderKey)
+        .map((folder) => [accessKey(agent, platform, folder), allowed])
+    );
+
+    setAccess((current) => ({
+      ...current,
+      ...Object.fromEntries(entries),
+    }));
+  }
+
   async function saveAccessRules() {
     setError(null);
 
@@ -221,13 +260,14 @@ function AdminFolderAccessContent() {
       setError("Live platform library data is required before folder access can be saved.");
       return;
     }
-    if (!selectedPlatform || !("id" in selectedPlatform)) {
-      setError("Select a live platform before saving folder access.");
+    const liveAgents = agents.filter((agent): agent is AgentProfile => "id" in agent);
+    const dirtyKeys = Object.keys(access).filter((key) => access[key] !== savedAccess[key]);
+
+    if (!dirtyKeys.length) {
+      setError("No folder access changes to save.");
       return;
     }
-    const liveFolders = folders.filter((folder): folder is PlatformFolderWithResources => "id" in folder);
-    const liveAgents = agents.filter((agent): agent is AgentProfile => "id" in agent);
-    if (!liveFolders.length || !liveAgents.length) {
+    if (!liveAgents.length || !platforms.length) {
       setError("Add live platform folders and active agents before saving access rules.");
       return;
     }
@@ -235,14 +275,15 @@ function AdminFolderAccessContent() {
     setSaving(true);
 
     try {
-      const rules = liveAgents.flatMap((agent) =>
-        liveFolders.map((folder) => ({
-          agentId: agent.id,
-          canView: accessIsAllowed(access, agent, selectedPlatform, folder),
-          folderId: folder.id,
-          platformId: selectedPlatform.id,
-        }))
-      );
+      const rules = dirtyKeys.map((key) => {
+        const { agentId: ruleAgentId, folderId: ruleFolderId, platformId: rulePlatformId } = parseAccessKey(key);
+        return {
+          agentId: ruleAgentId,
+          canView: Boolean(access[key]),
+          folderId: ruleFolderId,
+          platformId: rulePlatformId,
+        };
+      });
 
       const response = await portalRequest<{ access: AgentPlatformAccess[] }>(
         "/api/portal/partner/access",
@@ -255,7 +296,7 @@ function AdminFolderAccessContent() {
       setSavedAccess(access);
       showPortalToast({
         title: "Folder access saved",
-        message: `${response.access.length} permissions were updated for ${selectedPlatform.name}.`,
+        message: `${response.access.length} permissions were updated.`,
       });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Folder access could not be saved.");
@@ -327,6 +368,53 @@ function AdminFolderAccessContent() {
               </div>
               <p className="mt-3 text-xl font-semibold text-slate-950">{dirtyCount}</p>
               <p className="mt-1 text-sm text-slate-600">Unsaved permission edits</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2">
+                  <LockKeyhole aria-hidden="true" className="h-5 w-5 text-slate-700" />
+                  <h2 className="text-lg font-semibold text-slate-950">Global Folder Action</h2>
+                </div>
+                <p className="mt-1 text-sm leading-6 text-slate-700">
+                  Restrict or allow one folder type for one agent across every active platform. Use this for broad rules like hiding all Documents or Schedule A folders.
+                </p>
+              </div>
+              <div className="grid w-full gap-3 md:grid-cols-[minmax(220px,1fr)_220px_auto] xl:max-w-4xl">
+                <PortalSelect
+                  ariaLabel="Select agent for global folder access"
+                  value={globalAgentId}
+                  onValueChange={setGlobalAgentId}
+                  options={agents.map((agent) => ({
+                    label: `${agent.name} (${agent.email})`,
+                    value: agentId(agent),
+                  }))}
+                />
+                <PortalSelect
+                  ariaLabel="Select folder type for global access"
+                  value={globalFolderKey}
+                  onValueChange={setGlobalFolderKey}
+                  options={folderTypeOptions}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAgentFolderTypeAcrossPlatforms(false)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                  >
+                    Restrict all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAgentFolderTypeAcrossPlatforms(true)}
+                    className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-900"
+                  >
+                    Allow all
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
