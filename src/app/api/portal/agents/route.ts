@@ -11,6 +11,7 @@ import {
   writeAuditLog,
 } from "@/lib/portal/server";
 import { portalAppUrlForRole, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
+import { createSignedPortalAuthLink } from "@/lib/portal/signedAuthLink";
 import type { AgentProfile } from "@/lib/portal/types";
 
 type InviteLinkResponse = {
@@ -148,7 +149,13 @@ export async function POST(request: NextRequest) {
       status,
     });
     const agent = profiles[0];
-    await sendPortalAccessEmail({ accessUrl: inviteUrl, name, to: email, type: "invite" });
+    await sendPortalAccessEmail({
+      accessUrl: createSignedPortalAuthLink(inviteUrl, role),
+      name,
+      role,
+      to: email,
+      type: "invite",
+    });
     await writeAuditLog(context, "agent.created", "agent_profiles", agent.id, {
       email,
       invitationDelivery: "resend",

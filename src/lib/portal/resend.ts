@@ -7,6 +7,7 @@ import type { PortalRole } from "./types";
 type PortalAccessEmail = {
   accessUrl: string;
   name: string;
+  role: PortalRole;
   type: "invite" | "recovery";
   to: string;
 };
@@ -56,9 +57,14 @@ export function portalAppUrlForRole(role: PortalRole) {
   }
 }
 
-export function resendConfig() {
+export function resendConfig(role?: PortalRole) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
+  const from =
+    role === "admin"
+      ? process.env.ADMIN_RESEND_FROM_EMAIL ?? process.env.RESEND_FROM_EMAIL
+      : role === "agent"
+        ? process.env.AGENT_RESEND_FROM_EMAIL ?? process.env.RESEND_FROM_EMAIL
+        : process.env.RESEND_FROM_EMAIL;
   if (!apiKey || !from) {
     throw new PortalApiError(
       "Portal email delivery is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.",
@@ -72,10 +78,15 @@ export function resendConfig() {
 export async function sendPortalAccessEmail({
   accessUrl,
   name,
+  role,
   to,
   type,
 }: PortalAccessEmail) {
-  const { apiKey, from } = resendConfig();
+  const { apiKey, from } = resendConfig(role);
+  const accessHost = new URL(accessUrl).hostname;
+  if (accessHost.endsWith(".supabase.co")) {
+    throw new PortalApiError("Portal email link is not configured for branded delivery.", 500);
+  }
 
   const safeName = escapeHtml(name);
   const safeAccessUrl = escapeHtml(accessUrl);
@@ -104,7 +115,7 @@ export async function sendPortalAccessEmail({
           <p style="margin:28px 0">
             <a href="${safeAccessUrl}" style="background:#065f46;border-radius:8px;color:#ffffff;display:inline-block;font-weight:700;padding:12px 18px;text-decoration:none">${actionLabel}</a>
           </p>
-          <p style="color:#475569;font-size:13px">If you did not expect this invitation, you can ignore this email.</p>
+          <p style="color:#475569;font-size:13px">If you did not expect this email, you can ignore it.</p>
         </div>
       `,
       subject,
@@ -135,7 +146,7 @@ export async function sendPortalLoginCodeEmail({
   role,
   to,
 }: PortalLoginCodeEmail) {
-  const { apiKey, from } = resendConfig();
+  const { apiKey, from } = resendConfig(role);
   const safeCode = escapeHtml(code);
   const safeName = escapeHtml(name);
   const roleLabel = role === "admin" ? "administrator" : "agent";

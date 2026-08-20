@@ -33,6 +33,12 @@ export function portalOriginForRole(role: PortalRole) {
   return `https://${role === "admin" ? adminPortalHost() : partnerPortalHost()}`;
 }
 
+export function authEmailLinkOrigin(role: PortalRole) {
+  const configuredUrl = process.env.PORTAL_AUTH_EMAIL_ORIGIN;
+  if (configuredUrl) return new URL(configuredUrl).origin;
+  return portalOriginForRole(role);
+}
+
 export function roleMismatchMessage(expectedRole: PortalRole) {
   return expectedRole === "admin"
     ? "Use the admin portal domain to sign in as an administrator."

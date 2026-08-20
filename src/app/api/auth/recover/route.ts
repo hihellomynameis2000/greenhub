@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { portalRoleForHost, requestHost } from "@/lib/portal/hosts";
 import { portalAppUrlForRole, resendConfig, sendPortalAccessEmail } from "@/lib/portal/resend";
 import { portalErrorResponse, supabaseAuthAdmin, supabaseRest } from "@/lib/portal/server";
+import { createSignedPortalAuthLink } from "@/lib/portal/signedAuthLink";
 import type { AgentProfile } from "@/lib/portal/types";
 
 type RecoveryLinkResponse = {
@@ -49,8 +50,9 @@ export async function POST(request: NextRequest) {
     }
 
     await sendPortalAccessEmail({
-      accessUrl,
+      accessUrl: createSignedPortalAuthLink(accessUrl, profile.role),
       name: profile.name,
+      role: profile.role,
       to: profile.email,
       type: "recovery",
     });

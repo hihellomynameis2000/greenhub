@@ -45,6 +45,11 @@ export default function LoginPage() {
       }
 
       const params = new URLSearchParams(window.location.search);
+      if (params.get("password") === "updated") {
+        setNotice("Password updated. Sign in to continue.");
+        window.history.replaceState(null, "", "/login");
+      }
+
       if (params.get("verify") !== "sent") return;
 
       try {
@@ -213,6 +218,12 @@ export default function LoginPage() {
             {error ? (
               <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
                 {error}
+              </div>
+            ) : null}
+
+            {notice ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">
+                {notice}
               </div>
             ) : null}
 

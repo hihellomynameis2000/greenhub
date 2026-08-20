@@ -3,51 +3,27 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
+
+type SetPasswordResponse = {
+  email: string;
+  redirectTo: string;
+};
 
 export default function SetPasswordPage() {
   const router = useRouter();
+  const [state, setState] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [checkingSession, setCheckingSession] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    let isCurrent = true;
-
-    async function checkInviteSession() {
-      try {
-        const {
-          data: { session },
-        } = await getPortalSupabase().auth.getSession();
-
-        if (!session?.user.email) {
-          if (isCurrent) {
-            setError("This invitation link is invalid or has expired. Ask your administrator for a new invitation.");
-          }
-          return;
-        }
-
-        if (isCurrent) setEmail(session.user.email);
-      } catch (sessionError) {
-        if (isCurrent) {
-          setError(
-            sessionError instanceof Error
-              ? sessionError.message
-              : "We could not verify this invitation link."
-          );
-        }
-      } finally {
-        if (isCurrent) setCheckingSession(false);
-      }
+    const linkState = new URLSearchParams(window.location.search).get("state");
+    if (!linkState) {
+      setError("This secure link is invalid or has expired. Request a new password link.");
+      return;
     }
-
-    checkInviteSession();
-    return () => {
-      isCurrent = false;
-    };
+    setState(linkState);
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -66,11 +42,18 @@ export default function SetPasswordPage() {
     setSaving(true);
 
     try {
-      const { error: updateError } = await getPortalSupabase().auth.updateUser({ password });
-      if (updateError) throw updateError;
+      const response = await fetch("/api/auth/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, state }),
+      });
+      const body = (await response.json()) as SetPasswordResponse & { error?: string };
 
-      await portalRequest("/api/auth/two-factor/send", { method: "POST" });
-      router.replace("/login?verify=sent");
+      if (!response.ok) {
+        throw new Error(body.error || "Password setup failed.");
+      }
+
+      router.replace(body.redirectTo);
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Password setup failed.");
       setSaving(false);
@@ -92,7 +75,7 @@ export default function SetPasswordPage() {
           <div className="mt-7 text-sm font-semibold text-emerald-800">Partner portal</div>
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">Set your password</h1>
           <p className="mt-2 text-sm leading-6 text-slate-700">
-            {email ? `Create secure access for ${email}.` : "Create secure access to the portal."}
+            Create secure access to the GreenHub Partner Portal.
           </p>
         </div>
 
@@ -105,7 +88,7 @@ export default function SetPasswordPage() {
               placeholder="At least 8 characters"
               type="password"
               required
-              disabled={checkingSession || Boolean(error && !email)}
+              disabled={!state || saving || Boolean(error && !state)}
               autoComplete="new-password"
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-950 placeholder:text-slate-500 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100"
             />
@@ -118,7 +101,7 @@ export default function SetPasswordPage() {
               placeholder="Re-enter your password"
               type="password"
               required
-              disabled={checkingSession || Boolean(error && !email)}
+              disabled={!state || saving || Boolean(error && !state)}
               autoComplete="new-password"
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-950 placeholder:text-slate-500 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100"
             />
@@ -132,10 +115,10 @@ export default function SetPasswordPage() {
 
           <button
             type="submit"
-            disabled={checkingSession || saving || Boolean(error && !email)}
+            disabled={!state || saving || Boolean(error && !state)}
             className="w-full rounded-xl bg-emerald-800 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {checkingSession ? "Verifying invitation..." : saving ? "Saving password..." : "Activate portal access"}
+            {saving ? "Saving password..." : "Activate portal access"}
           </button>
         </form>
       </div>
