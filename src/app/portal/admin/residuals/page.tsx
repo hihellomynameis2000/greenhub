@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronDown, FileText, Trash2 } from "lucide-react";
+import { Bell, ChevronDown, CreditCard, FileText, Layers3, ReceiptText, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
@@ -27,6 +27,34 @@ const months = [
 ];
 
 const residualsPerPage = 10;
+
+type ResidualReportView = "pob" | "cc" | "total";
+
+const residualReportViews: Array<{
+  description: string;
+  icon: typeof ReceiptText;
+  id: ResidualReportView;
+  label: string;
+}> = [
+  {
+    description: "Surcharge, rebate, transaction count, and POB profit reporting.",
+    icon: ReceiptText,
+    id: "pob",
+    label: "POB Residual",
+  },
+  {
+    description: "Card-processing volume, GreenHub net profit, and commission terms.",
+    icon: CreditCard,
+    id: "cc",
+    label: "CC Residual",
+  },
+  {
+    description: "Combined POB and CC residuals with equipment-cost deductions.",
+    icon: Layers3,
+    id: "total",
+    label: "Total Residual",
+  },
+];
 
 type ResidualForm = {
   agentCommissionStructure: string;
@@ -210,6 +238,7 @@ function AdminResidualsContent() {
   const [reportAgent, setReportAgent] = useState("all");
   const [reportMonth, setReportMonth] = useState("all");
   const [reportStatus, setReportStatus] = useState("all");
+  const [reportView, setReportView] = useState<ResidualReportView>("total");
   const [recentPage, setRecentPage] = useState(1);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -685,7 +714,7 @@ function AdminResidualsContent() {
             <div>
               <h2 className="font-semibold text-slate-950">Residual Reporting by Agent</h2>
               <p className="mt-1 text-sm text-slate-700">
-                Review each agent&apos;s residuals, equipment costs, and POB reporting fields.
+                Review POB residuals, CC residuals, and the combined total residual payout.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[560px]">
@@ -722,74 +751,41 @@ function AdminResidualsContent() {
               />
             </div>
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[2100px] text-left text-xs text-slate-900">
-            <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
-              <tr>
-                <th className="p-4">Merchant</th>
-                <th className="px-3 py-3">Agent</th>
-                <th className="px-3 py-3">Platform</th>
-                <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3 text-right">GreenHub POB Buy Rate</th>
-                <th className="px-3 py-3">Agent Commission Structure</th>
-                <th className="px-3 py-3 text-right">Merchant Sales Volume</th>
-                <th className="px-3 py-3 text-right">GreenHub Net Profit</th>
-                <th className="px-3 py-3 text-right">Surcharge</th>
-                <th className="px-3 py-3 text-right">Rebate to Merchant</th>
-                <th className="px-3 py-3 text-right">Agent Profit Per Transaction</th>
-                <th className="px-3 py-3 text-right">GreenHub POB Profit Per Transaction</th>
-                <th className="px-3 py-3 text-right">Transactions per Month</th>
-                <th className="px-3 py-3 text-right">Agent Profit</th>
-                <th className="px-3 py-3 text-right">GreenHub POB Net Profit</th>
-                <th className="px-3 py-3 text-right">Equipment Cost</th>
-                <th className="px-3 py-3">Merchant Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedReportRows.map((row) => (
-                <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
-                  <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
-                  <td className="px-3 py-3">{row.agent}</td>
-                  <td className="px-3 py-3">{row.platform}</td>
-                  <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobBuyRate)}</td>
-                  <td className="px-3 py-3">{row.agentCommissionStructure}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.salesVolume)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubNetProfit)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.surcharge)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.rebate)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.profitPerTransaction)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobProfitPerTransaction)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{row.transactionsPerMonth.toLocaleString()}</td>
-                  <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobNetProfit)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
-                  <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "—"}</td>
-                </tr>
-              ))}
-              {filteredReportRows.length === 0 ? (
-                <tr>
-                  <td colSpan={17} className="px-5 py-10 text-center text-sm text-slate-600">
-                    No residuals match the selected filters.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-slate-300 bg-slate-50 p-5">
-          <h3 className="text-sm font-semibold text-slate-950">Totals</h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <TotalTile label="Total Merchant Sales Volume" value={currency(reportTotals.salesVolume)} />
-            <TotalTile label="Total GreenHub Net Profit" value={currency(reportTotals.greenhubNetProfit)} />
-            <TotalTile label="Total Transactions per Month" value={reportTotals.transactionsPerMonth.toLocaleString()} />
-            <TotalTile label="Total Agent Profit" value={currency(reportTotals.agentProfit)} />
-            <TotalTile label="Total GreenHub POB Net Profit" value={currency(reportTotals.greenhubPobNetProfit)} />
-            <TotalTile label="Total Equipment Cost" value={currency(reportTotals.equipmentCost)} />
-            <TotalTile label="Agent Profit Less Equipment" value={currency(reportTotals.agentProfit - reportTotals.equipmentCost)} />
+          <div className="mt-5 grid gap-3 xl:grid-cols-3">
+            {residualReportViews.map(({ description, icon: Icon, id, label }) => {
+              const active = reportView === id;
+
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setReportView(id)}
+                  className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                    active
+                      ? "border-emerald-800 bg-emerald-900 text-white"
+                      : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      active ? "bg-emerald-800 text-white" : "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    <Icon aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold">{label}</span>
+                    <span className={`mt-1 block text-xs leading-5 ${active ? "text-emerald-50" : "text-slate-600"}`}>
+                      {description}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
+        <ResidualSummary view={reportView} totals={reportTotals} />
+        <ResidualReportTable rows={paginatedReportRows} view={reportView} />
         <PortalPagination
           page={activePage}
           pageCount={pageCount}
@@ -885,22 +881,226 @@ function TotalTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function combinedGreenHubResidual(row: ResidualReportRow) {
+  return row.greenhubNetProfit + row.greenhubPobNetProfit;
+}
+
+function agentNetResidual(row: ResidualReportRow) {
+  return row.agentProfit - row.equipmentCost;
+}
+
+function ResidualSummary({
+  totals,
+  view,
+}: {
+  totals: ReturnType<typeof totalResiduals>;
+  view: ResidualReportView;
+}) {
+  const tiles =
+    view === "pob"
+      ? [
+          { label: "POB Transactions", value: totals.transactionsPerMonth.toLocaleString() },
+          { label: "POB GreenHub Net Profit", value: currency(totals.greenhubPobNetProfit) },
+          { label: "POB Agent Residual", value: currency(totals.agentProfit) },
+          { label: "Avg POB Profit / Transaction", value: currency(totals.averagePobProfitPerTransaction) },
+        ]
+      : view === "cc"
+        ? [
+            { label: "CC Merchant Sales Volume", value: currency(totals.salesVolume) },
+            { label: "CC GreenHub Net Profit", value: currency(totals.greenhubNetProfit) },
+            { label: "Agent Revenue Share Total", value: currency(totals.agentProfit) },
+            { label: "Equipment Cost", value: currency(totals.equipmentCost) },
+          ]
+        : [
+            { label: "Total GreenHub Residual", value: currency(totals.totalGreenHubResidual) },
+            { label: "Total Agent Residual", value: currency(totals.agentProfit) },
+            { label: "Total Equipment Cost", value: currency(totals.equipmentCost) },
+            { label: "Agent Net Residual", value: currency(totals.agentNetResidual) },
+          ];
+
+  return (
+    <div className="border-b border-slate-300 bg-slate-50 p-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((tile) => (
+          <TotalTile key={tile.label} label={tile.label} value={tile.value} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ResidualReportTable({
+  rows,
+  view,
+}: {
+  rows: ResidualReportRow[];
+  view: ResidualReportView;
+}) {
+  if (view === "pob") {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1450px] text-left text-xs text-slate-900">
+          <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
+            <tr>
+              <th className="p-4">Merchant</th>
+              <th className="px-3 py-3">Agent</th>
+              <th className="px-3 py-3">Platform</th>
+              <th className="px-3 py-3">Status</th>
+              <th className="px-3 py-3 text-right">POB Buy Rate</th>
+              <th className="px-3 py-3 text-right">Surcharge</th>
+              <th className="px-3 py-3 text-right">Rebate to Merchant</th>
+              <th className="px-3 py-3 text-right">Agent Profit / Transaction</th>
+              <th className="px-3 py-3 text-right">GreenHub POB Profit / Transaction</th>
+              <th className="px-3 py-3 text-right">Transactions</th>
+              <th className="px-3 py-3 text-right">Agent POB Residual</th>
+              <th className="px-3 py-3 text-right">GreenHub POB Net Profit</th>
+              <th className="px-3 py-3">Merchant Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
+                <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
+                <td className="px-3 py-3">{row.agent}</td>
+                <td className="px-3 py-3">{row.platform}</td>
+                <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
+                <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobBuyRate)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{currency(row.surcharge)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{currency(row.rebate)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{currency(row.profitPerTransaction)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobProfitPerTransaction)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{row.transactionsPerMonth.toLocaleString()}</td>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.greenhubPobNetProfit)}</td>
+                <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
+              </tr>
+            ))}
+            <ResidualEmptyRow colSpan={13} rows={rows} />
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (view === "cc") {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1200px] text-left text-xs text-slate-900">
+          <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
+            <tr>
+              <th className="p-4">Merchant</th>
+              <th className="px-3 py-3">Agent</th>
+              <th className="px-3 py-3">Platform</th>
+              <th className="px-3 py-3">Status</th>
+              <th className="px-3 py-3">Agent Commission Structure</th>
+              <th className="px-3 py-3 text-right">Merchant Sales Volume</th>
+              <th className="px-3 py-3 text-right">GreenHub Net Profit</th>
+              <th className="px-3 py-3 text-right">Agent Residual</th>
+              <th className="px-3 py-3 text-right">Equipment Cost</th>
+              <th className="px-3 py-3">Merchant Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
+                <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
+                <td className="px-3 py-3">{row.agent}</td>
+                <td className="px-3 py-3">{row.platform}</td>
+                <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
+                <td className="px-3 py-3">{row.agentCommissionStructure}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{currency(row.salesVolume)}</td>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.greenhubNetProfit)}</td>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
+                <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
+              </tr>
+            ))}
+            <ResidualEmptyRow colSpan={10} rows={rows} />
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[1280px] text-left text-xs text-slate-900">
+        <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
+          <tr>
+            <th className="p-4">Merchant</th>
+            <th className="px-3 py-3">Agent</th>
+            <th className="px-3 py-3">Platform</th>
+            <th className="px-3 py-3">Status</th>
+            <th className="px-3 py-3 text-right">CC Residual</th>
+            <th className="px-3 py-3 text-right">POB Residual</th>
+            <th className="px-3 py-3 text-right">Total GreenHub Residual</th>
+            <th className="px-3 py-3 text-right">Agent Residual</th>
+            <th className="px-3 py-3 text-right">Equipment Cost</th>
+            <th className="px-3 py-3 text-right">Agent Net Residual</th>
+            <th className="px-3 py-3">Merchant Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
+              <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
+              <td className="px-3 py-3">{row.agent}</td>
+              <td className="px-3 py-3">{row.platform}</td>
+              <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
+              <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubNetProfit)}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobNetProfit)}</td>
+              <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(combinedGreenHubResidual(row))}</td>
+              <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
+              <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(agentNetResidual(row))}</td>
+              <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
+            </tr>
+          ))}
+          <ResidualEmptyRow colSpan={11} rows={rows} />
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ResidualEmptyRow({ colSpan, rows }: { colSpan: number; rows: ResidualReportRow[] }) {
+  if (rows.length) return null;
+
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-5 py-10 text-center text-sm text-slate-600">
+        No residuals match the selected filters.
+      </td>
+    </tr>
+  );
+}
+
 function totalResiduals(rows: ResidualReportRow[]) {
   return rows.reduce(
     (totals, row) => ({
       agentProfit: totals.agentProfit + row.agentProfit,
+      agentNetResidual: totals.agentNetResidual + agentNetResidual(row),
+      averagePobProfitPerTransaction:
+        totals.transactionsPerMonth + row.transactionsPerMonth
+          ? (totals.greenhubPobNetProfit + row.greenhubPobNetProfit) /
+            (totals.transactionsPerMonth + row.transactionsPerMonth)
+          : 0,
       equipmentCost: totals.equipmentCost + row.equipmentCost,
       greenhubNetProfit: totals.greenhubNetProfit + row.greenhubNetProfit,
       greenhubPobNetProfit: totals.greenhubPobNetProfit + row.greenhubPobNetProfit,
       salesVolume: totals.salesVolume + row.salesVolume,
+      totalGreenHubResidual: totals.totalGreenHubResidual + combinedGreenHubResidual(row),
       transactionsPerMonth: totals.transactionsPerMonth + row.transactionsPerMonth,
     }),
     {
       agentProfit: 0,
+      agentNetResidual: 0,
+      averagePobProfitPerTransaction: 0,
       equipmentCost: 0,
       greenhubNetProfit: 0,
       greenhubPobNetProfit: 0,
       salesVolume: 0,
+      totalGreenHubResidual: 0,
       transactionsPerMonth: 0,
     }
   );
