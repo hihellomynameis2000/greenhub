@@ -56,3 +56,41 @@ export async function portalRequest<T>(path: string, init: RequestInit = {}): Pr
 
   return body;
 }
+
+export async function portalFileRequest<T>(path: string, body: FormData): Promise<T> {
+  const {
+    data: { session },
+  } = await getPortalSupabase().auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Sign in is required to use live portal data.");
+  }
+
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body,
+  });
+  const text = await response.text();
+  let parsed = {} as T & { error?: string };
+
+  if (text) {
+    try {
+      parsed = JSON.parse(text) as T & { error?: string };
+    } catch {
+      parsed = {
+        error: response.ok
+          ? "The portal response could not be read."
+          : `Portal request failed. Reference ${response.status}.`,
+      } as T & { error?: string };
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(parsed.error || "The portal request could not be completed.");
+  }
+
+  return parsed;
+}

@@ -42,6 +42,8 @@ const fieldAliases: Record<ImportField, string[]> = {
   greenhubPobProfitPerTransaction: [
     "greenhub pob profit per transaction",
     "greenhub pob profit / transaction",
+    "greenhub profit per transaction",
+    "greenhub profit / transaction",
     "pob profit per transaction",
     "net surcharge",
   ],
@@ -98,7 +100,7 @@ function shareValue(value: string) {
   return numeric > 1 ? numeric / 100 : numeric;
 }
 
-function csvRows(text: string) {
+export function csvRows(text: string) {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -284,7 +286,7 @@ function mappedHeader(headers: string[]) {
   return map;
 }
 
-function parseRows(fileName: string, sheetName: string, rows: string[][]): ParsedResidualImport {
+export function parseRows(fileName: string, sheetName: string, rows: string[][]): ParsedResidualImport {
   let best = { index: -1, map: new Map<ImportField, number>(), score: 0 };
 
   rows.forEach((row, index) => {

@@ -8,8 +8,8 @@ import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
-import { portalRequest } from "@/lib/portal/client";
-import { parseResidualImportFile, type ParsedResidualImport, type ParsedResidualImportRow } from "@/lib/portal/residualImport";
+import { portalFileRequest, portalRequest } from "@/lib/portal/client";
+import type { ParsedResidualImport, ParsedResidualImportRow } from "@/lib/portal/residualImport";
 import { inferredResidualPlatformType, type ResidualPlatformType } from "@/lib/portal/residualType";
 import type { MerchantAccount, MonthlyResidual, Platform } from "@/lib/portal/types";
 
@@ -98,14 +98,18 @@ type ResidualReportRow = {
   greenhubPobBuyRate: number;
   greenhubPobNetProfit: number;
   greenhubPobProfitPerTransaction: number;
+  hasResidual: boolean;
   id: string;
   merchant: string;
+  merchantAccountId: string;
   merchantNotes: string;
   month: string;
   monthValue: string;
   platform: string;
+  platformId: string;
   profitPerTransaction: number;
   rebate: number;
+  residualId: string | null;
   residualType: ResidualPlatformType;
   salesVolume: number;
   status: "draft" | "finalized";
@@ -258,6 +262,34 @@ function calculatedPobField(field: keyof ResidualForm) {
     field === "greenhubPobProfitPerTransaction";
 }
 
+function reportMonthLabel(value: string) {
+  const [year, numericMonth] = value.split("-");
+  return `${months[Number(numericMonth) - 1] ?? "Unknown"} ${year}`;
+}
+
+function parseReportMonth(value: string) {
+  if (value === "all") return null;
+
+  const [year, numericMonth] = value.split("-");
+  const month = Number(numericMonth);
+  if (!year || !month) return null;
+
+  return {
+    label: reportMonthLabel(value),
+    month,
+    value,
+    year,
+  };
+}
+
+function residualMonthValue(residual: MonthlyResidual) {
+  return `${residual.residual_year}-${residual.residual_month}`;
+}
+
+function residualKey(accountId: string, platformId: string | null | undefined, monthValue: string) {
+  return `${accountId}::${platformId ?? ""}::${monthValue}`;
+}
+
 function savedAt(value: string) {
   return `Saved ${new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -296,6 +328,7 @@ function AdminResidualsContent() {
   const [parsedImport, setParsedImport] = useState<ParsedResidualImport | null>(null);
   const [importing, setImporting] = useState(false);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
+  const residualFormRef = useRef<HTMLElement>(null);
 
   const accountOptions = data
     ? data.accounts.map((account) => ({ label: account.account_name, value: account.id }))
@@ -373,20 +406,29 @@ function AdminResidualsContent() {
     : "all";
   const showPobFields = residualEntryType !== "cc";
   const showCcFields = residualEntryType !== "pob";
-  const reportMonthOptions = data
-    ? [
-        { label: "All months", value: "all" },
-        ...Array.from(
-          new Set(data.residuals.map((row) => `${row.residual_year}-${row.residual_month}`))
-        ).map((value) => {
-          const [year, numericMonth] = value.split("-");
-          return { label: `${months[Number(numericMonth) - 1]} ${year}`, value };
-        }),
-      ]
-    : [
+  const reportMonthOptions = useMemo(() => {
+    if (!data) {
+      return [
         { label: "All months", value: "all" },
         { label: "April 2024", value: "2024-4" },
       ];
+    }
+
+    const years = new Set<number>([
+      new Date().getFullYear(),
+      Number(form.year) || new Date().getFullYear(),
+      Number(importYear) || new Date().getFullYear(),
+      ...data.residuals.map((row) => row.residual_year),
+    ]);
+    const values = [...years]
+      .sort((left, right) => right - left)
+      .flatMap((year) => months.map((_, monthIndex) => `${year}-${monthIndex + 1}`));
+
+    return [
+      { label: "All months", value: "all" },
+      ...values.map((value) => ({ label: reportMonthLabel(value), value })),
+    ];
+  }, [data, form.year, importYear]);
 
   const drafts = useMemo<DraftEntry[]>(() => {
     if (!data) return previewDrafts;
@@ -443,12 +485,21 @@ function AdminResidualsContent() {
     setError(null);
 
     try {
-      const parsed = await parseResidualImportFile(file);
+      const formData = new FormData();
+      formData.append("file", file);
+      const parsed = await portalFileRequest<ParsedResidualImport>(
+        "/api/portal/residuals/parse-import",
+        formData
+      );
       setParsedImport(parsed);
       if (parsed.warnings.length) setError(parsed.warnings.join(" "));
     } catch (parseError) {
       setParsedImport(null);
-      setError(parseError instanceof Error ? parseError.message : "The residual import file could not be read.");
+      setError(
+        parseError instanceof Error
+          ? parseError.message
+          : "The residual import file could not be read. Export the report as CSV and upload it again."
+      );
     }
   }
 
@@ -667,42 +718,152 @@ function AdminResidualsContent() {
     }
   }
 
-  const liveReportRows = useMemo<ResidualReportRow[]>(
-    () =>
-      data?.residuals.map((residual) => ({
-        agent: agentNames.get(residual.agent_id) ?? "Unknown agent",
+  function loadReportRow(row: ResidualReportRow) {
+    const period = parseReportMonth(row.monthValue);
+    const value = (amountValue: number) => (row.hasResidual ? inputValue(amountValue) : "");
+
+    setForm({
+      agentCommissionStructure: row.agentCommissionStructure === "Not specified" ? "" : row.agentCommissionStructure,
+      agentId: row.agentId,
+      agentProfit: value(row.agentProfit),
+      equipmentCost: value(row.equipmentCost),
+      greenhubPobBuyRate: value(row.greenhubPobBuyRate),
+      greenhubPobNetProfit: value(row.greenhubPobNetProfit),
+      greenhubPobProfitPerTransaction: value(row.greenhubPobProfitPerTransaction),
+      merchantNotes: row.hasResidual ? row.merchantNotes : "",
+      merchantAccountId: row.merchantAccountId,
+      month: period ? months[period.month - 1] ?? form.month : form.month,
+      monthlySalesVolume: value(row.salesVolume),
+      netProfit: value(row.greenhubNetProfit),
+      oneTimeFees: "",
+      platformId: row.platformId,
+      profitPerTransaction: value(row.profitPerTransaction),
+      rebate: value(row.rebate),
+      status: row.status,
+      surcharge: value(row.surcharge),
+      transactionsPerMonth: value(row.transactionsPerMonth),
+      year: period?.year ?? form.year,
+    });
+    setEditingDraftId(row.residualId);
+    setDraftsOpen(false);
+    residualFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    showPortalToast({
+      title: row.hasResidual ? "Residual loaded" : "Account loaded",
+      message: row.hasResidual
+        ? "Update the monthly values in the entry form."
+        : "Add this account's monthly residual values, then save.",
+    });
+  }
+
+  const selectedReportPeriod = useMemo(() => parseReportMonth(reportMonth), [reportMonth]);
+  const residualsByAccountPeriod = useMemo(() => {
+    const rows = new Map<string, MonthlyResidual>();
+
+    data?.residuals.forEach((residual) => {
+      const monthValue = residualMonthValue(residual);
+      rows.set(residualKey(residual.merchant_account_id, residual.platform_id, monthValue), residual);
+      rows.set(residualKey(residual.merchant_account_id, "", monthValue), residual);
+    });
+
+    return rows;
+  }, [data?.residuals]);
+  const liveReportRows = useMemo<ResidualReportRow[]>(() => {
+    if (!data) return [];
+
+    function rowFromResidual(residual: MonthlyResidual, account?: MerchantAccount): ResidualReportRow {
+      const rowAccount =
+        account ?? data?.accounts.find((item) => item.id === residual.merchant_account_id) ?? null;
+      const platformId = residual.platform_id ?? rowAccount?.platform_id ?? "";
+      const platformRecord = data?.platforms.find((platform) => platform.id === platformId);
+      const agentId = residual.agent_id || rowAccount?.assigned_agent_id || "";
+
+      return {
+        agent: agentNames.get(agentId) ?? "Unknown agent",
         agentCommissionStructure:
           residual.agent_commission_structure ||
-          data.accounts.find((account) => account.id === residual.merchant_account_id)
-            ?.commission_structure ||
+          rowAccount?.commission_structure ||
           "Not specified",
-        agentId: residual.agent_id,
+        agentId,
         agentProfit: amount(residual.agent_profit),
         equipmentCost: amount(residual.equipment_cost),
         greenhubNetProfit: amount(residual.greenhub_net_profit),
         greenhubPobBuyRate: amount(residual.greenhub_pob_buy_rate),
         greenhubPobNetProfit: amount(residual.greenhub_pob_net_profit),
         greenhubPobProfitPerTransaction: amount(residual.greenhub_pob_profit_per_transaction),
+        hasResidual: true,
         id: residual.id,
-        merchant: accountNames.get(residual.merchant_account_id) ?? "Unknown account",
+        merchant: accountNames.get(residual.merchant_account_id) ?? rowAccount?.account_name ?? "Unknown account",
+        merchantAccountId: residual.merchant_account_id,
         merchantNotes: residual.merchant_notes ?? "",
         month: `${months[residual.residual_month - 1]} ${residual.residual_year}`,
-        monthValue: `${residual.residual_year}-${residual.residual_month}`,
-        platform: platformNames.get(residual.platform_id ?? "") ?? "Unassigned",
+        monthValue: residualMonthValue(residual),
+        platform: platformNames.get(platformId) ?? "Unassigned",
+        platformId,
         profitPerTransaction: amount(residual.profit_per_transaction),
         rebate: amount(residual.rebate),
-        residualType: inferredResidualPlatformType(
-          data.platforms.find((platform) => platform.id === residual.platform_id) ??
-            platformNames.get(residual.platform_id ?? "") ??
-            "Unassigned"
-        ),
+        residualId: residual.id,
+        residualType: inferredResidualPlatformType(platformRecord ?? platformNames.get(platformId) ?? "Unassigned"),
         salesVolume: amount(residual.monthly_sales_volume),
         status: residual.residual_status,
         surcharge: amount(residual.surcharge),
         transactionsPerMonth: amount(residual.transactions_per_month),
-      })) ?? [],
-    [accountNames, agentNames, data, platformNames]
-  );
+      };
+    }
+
+    if (!selectedReportPeriod) {
+      return data.residuals.map((residual) => rowFromResidual(residual));
+    }
+
+    return data.accounts
+      .filter((account) => account.status !== "closed")
+      .map((account) => {
+        const platformId = account.platform_id ?? "";
+        const residual =
+          residualsByAccountPeriod.get(residualKey(account.id, platformId, selectedReportPeriod.value)) ??
+          residualsByAccountPeriod.get(residualKey(account.id, "", selectedReportPeriod.value));
+
+        if (residual) return rowFromResidual(residual, account);
+
+        const platformRecord = data.platforms.find((platform) => platform.id === platformId);
+        const agentId = account.assigned_agent_id ?? "";
+
+        return {
+          agent: agentNames.get(agentId) ?? "Unassigned",
+          agentCommissionStructure: account.commission_structure || "Not specified",
+          agentId,
+          agentProfit: 0,
+          equipmentCost: 0,
+          greenhubNetProfit: 0,
+          greenhubPobBuyRate: 0,
+          greenhubPobNetProfit: 0,
+          greenhubPobProfitPerTransaction: 0,
+          hasResidual: false,
+          id: `pending-${account.id}-${selectedReportPeriod.value}`,
+          merchant: account.account_name,
+          merchantAccountId: account.id,
+          merchantNotes: account.internal_notes ?? "",
+          month: selectedReportPeriod.label,
+          monthValue: selectedReportPeriod.value,
+          platform: platformNames.get(platformId) ?? "Unassigned",
+          platformId,
+          profitPerTransaction: 0,
+          rebate: 0,
+          residualId: null,
+          residualType: inferredResidualPlatformType(platformRecord ?? platformNames.get(platformId) ?? "Unassigned"),
+          salesVolume: 0,
+          status: "draft" as const,
+          surcharge: 0,
+          transactionsPerMonth: 0,
+        };
+      });
+  }, [
+    accountNames,
+    agentNames,
+    data,
+    platformNames,
+    residualsByAccountPeriod,
+    selectedReportPeriod,
+  ]);
   const previewReportRows = useMemo(
     () => demoResidualRows.map((row) => demoReportRow(row)),
     []
@@ -869,7 +1030,7 @@ function AdminResidualsContent() {
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
+      <section ref={residualFormRef} className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Add Monthly Residual Entry</h2>
@@ -1208,7 +1369,7 @@ function AdminResidualsContent() {
           </div>
         </div>
         <ResidualSummary view={reportView} totals={reportTotals} />
-        <ResidualReportTable rows={paginatedReportRows} view={reportView} />
+        <ResidualReportTable rows={paginatedReportRows} view={reportView} onEditRow={loadReportRow} />
         <PortalPagination
           page={activePage}
           pageCount={pageCount}
@@ -1361,9 +1522,11 @@ function ResidualSummary({
 }
 
 function ResidualReportTable({
+  onEditRow,
   rows,
   view,
 }: {
+  onEditRow: (row: ResidualReportRow) => void;
   rows: ResidualReportRow[];
   view: ResidualReportView;
 }) {
@@ -1386,6 +1549,7 @@ function ResidualReportTable({
               <th className="px-3 py-3 text-right">Agent POB Residual</th>
               <th className="px-3 py-3 text-right">GreenHub POB Net Profit</th>
               <th className="px-3 py-3">Merchant Notes</th>
+              <th className="px-3 py-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -1404,9 +1568,10 @@ function ResidualReportTable({
                 <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
                 <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.greenhubPobNetProfit)}</td>
                 <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
+                <ResidualRowAction row={row} onEditRow={onEditRow} />
               </tr>
             ))}
-            <ResidualEmptyRow colSpan={13} rows={rows} />
+            <ResidualEmptyRow colSpan={14} rows={rows} />
           </tbody>
         </table>
       </div>
@@ -1429,6 +1594,7 @@ function ResidualReportTable({
               <th className="px-3 py-3 text-right">Agent Residual</th>
               <th className="px-3 py-3 text-right">Equipment Cost</th>
               <th className="px-3 py-3">Merchant Notes</th>
+              <th className="px-3 py-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -1444,9 +1610,10 @@ function ResidualReportTable({
                 <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
                 <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
+                <ResidualRowAction row={row} onEditRow={onEditRow} />
               </tr>
             ))}
-            <ResidualEmptyRow colSpan={10} rows={rows} />
+            <ResidualEmptyRow colSpan={11} rows={rows} />
           </tbody>
         </table>
       </div>
@@ -1468,6 +1635,7 @@ function ResidualReportTable({
             <th className="px-3 py-3 text-right">Equipment Cost</th>
             <th className="px-3 py-3 text-right">Agent Net Residual</th>
             <th className="px-3 py-3">Merchant Notes</th>
+            <th className="px-3 py-3 text-right">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -1483,12 +1651,33 @@ function ResidualReportTable({
               <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
               <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(agentNetResidual(row))}</td>
               <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
+              <ResidualRowAction row={row} onEditRow={onEditRow} />
             </tr>
           ))}
-          <ResidualEmptyRow colSpan={10} rows={rows} />
+          <ResidualEmptyRow colSpan={11} rows={rows} />
         </tbody>
       </table>
     </div>
+  );
+}
+
+function ResidualRowAction({
+  onEditRow,
+  row,
+}: {
+  onEditRow: (row: ResidualReportRow) => void;
+  row: ResidualReportRow;
+}) {
+  return (
+    <td className="px-3 py-3 text-right">
+      <button
+        type="button"
+        onClick={() => onEditRow(row)}
+        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition-colors hover:bg-slate-100"
+      >
+        {row.hasResidual ? "Edit" : "Add data"}
+      </button>
+    </td>
   );
 }
 
@@ -1576,14 +1765,18 @@ function demoReportRow(row: DemoResidualRow): ResidualReportRow {
     greenhubPobBuyRate: amount(row.greenhubPobBuyRate),
     greenhubPobNetProfit: amount(row.pobNetProfit),
     greenhubPobProfitPerTransaction: amount(row.greenhubPobProfitPerTransaction),
+    hasResidual: true,
     id: `${row.merchant}-${row.month}`,
     merchant: row.merchant,
+    merchantAccountId: row.merchant,
     merchantNotes: row.notes,
     month: row.month,
     monthValue: reportMonthValue(row.month),
     platform: row.platform,
+    platformId: row.platform,
     profitPerTransaction: amount(row.profitPerTransaction),
     rebate: amount(row.rebate),
+    residualId: null,
     residualType: inferredResidualPlatformType(row.platform),
     salesVolume: amount(row.volume),
     status: row.status.toLowerCase() as "draft" | "finalized",
