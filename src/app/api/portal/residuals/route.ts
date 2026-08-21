@@ -10,6 +10,7 @@ import {
   supabaseRest,
   writeAuditLog,
 } from "@/lib/portal/server";
+import { visibleResidualsForRole } from "@/lib/portal/residualVisibility";
 import type { MonthlyResidual } from "@/lib/portal/types";
 
 function validStatus(value: unknown): value is "draft" | "finalized" {
@@ -115,7 +116,9 @@ export async function GET(request: NextRequest) {
     }
 
     const residuals = await supabaseRest<MonthlyResidual[]>("monthly_residuals", { query });
-    return NextResponse.json({ residuals });
+    return NextResponse.json({
+      residuals: visibleResidualsForRole(residuals, context.profile.role),
+    });
   } catch (error) {
     return portalErrorResponse(error);
   }

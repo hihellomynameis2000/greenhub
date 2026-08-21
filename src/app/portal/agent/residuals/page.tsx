@@ -30,7 +30,6 @@ type AgentResidualRow = {
   agentProfit: number;
   agentRevenueShare: string;
   equipmentCost: number;
-  greenhubNetProfit: number;
   id: string;
   merchant: string;
   month: string;
@@ -79,14 +78,12 @@ function totalRows(rows: AgentResidualRow[]) {
     (totals, row) => ({
       agentProfit: totals.agentProfit + row.agentProfit,
       equipmentCost: totals.equipmentCost + row.equipmentCost,
-      greenhubNetProfit: totals.greenhubNetProfit + row.greenhubNetProfit,
       salesVolume: totals.salesVolume + row.salesVolume,
       transactionsPerMonth: totals.transactionsPerMonth + row.transactionsPerMonth,
     }),
     {
       agentProfit: 0,
       equipmentCost: 0,
-      greenhubNetProfit: 0,
       salesVolume: 0,
       transactionsPerMonth: 0,
     }
@@ -143,7 +140,6 @@ function AgentResidualsContent() {
         agentProfit: amount(row.agent_profit),
         agentRevenueShare: row.agent_commission_structure || accountTerms.get(row.merchant_account_id) || "Account terms",
         equipmentCost: amount(row.equipment_cost),
-        greenhubNetProfit: amount(row.greenhub_net_profit),
         id: row.id,
         merchant: accountNames.get(row.merchant_account_id) ?? "Unknown account",
         month: `${months[row.residual_month - 1]} ${row.residual_year}`,
@@ -166,7 +162,6 @@ function AgentResidualsContent() {
         agentProfit: amount(row.residual),
         agentRevenueShare: row.agentCommissionStructure,
         equipmentCost: amount(row.equipment),
-        greenhubNetProfit: amount(row.netProfit),
         id: `${row.merchant}-${row.month}`,
         merchant: row.merchant,
         month: row.month,
@@ -205,7 +200,7 @@ function AgentResidualsContent() {
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Agent Residual Report</h2>
             <p className="mt-1 text-sm text-slate-700">
-              Agent-visible columns only. Admin-only POB profit and merchant notes are hidden here.
+              Agent-visible payout fields only. GreenHub profit and merchant notes are hidden here.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[170px_220px_auto]">
@@ -225,7 +220,7 @@ function AgentResidualsContent() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1700px] text-left text-xs text-slate-900">
+          <table className="w-full min-w-[1580px] text-left text-xs text-slate-900">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
               <tr>
                 <th className="px-5 py-3 font-semibold">Merchant</th>
@@ -236,7 +231,6 @@ function AgentResidualsContent() {
                 <th className="px-3 py-3 font-semibold">Agent Revenue Share</th>
                 <th className="px-3 py-3 text-right font-semibold">Agent POB Buy Rate</th>
                 <th className="px-3 py-3 text-right font-semibold">Merchant Sales Volume</th>
-                <th className="px-3 py-3 text-right font-semibold">GreenHub Net Profit</th>
                 <th className="px-3 py-3 text-right font-semibold">Surcharge</th>
                 <th className="px-3 py-3 text-right font-semibold">Rebate to Merchant</th>
                 <th className="px-3 py-3 text-right font-semibold">Agent Profit Per Transaction</th>
@@ -260,7 +254,6 @@ function AgentResidualsContent() {
                   <td className="px-3 py-3.5">{row.agentRevenueShare}</td>
                   <td className="px-3 py-3.5 text-right tabular-nums">{currency(row.agentPobBuyRate)}</td>
                   <td className="px-3 py-3.5 text-right tabular-nums">{wholeCurrency(row.salesVolume)}</td>
-                  <td className="px-3 py-3.5 text-right tabular-nums">{currency(row.greenhubNetProfit)}</td>
                   <td className="px-3 py-3.5 text-right tabular-nums">{currency(row.surcharge)}</td>
                   <td className="px-3 py-3.5 text-right tabular-nums">{currency(row.rebate)}</td>
                   <td className="px-3 py-3.5 text-right tabular-nums">{currency(row.profitPerTransaction)}</td>
@@ -271,7 +264,7 @@ function AgentResidualsContent() {
               ))}
               {filteredRowCount === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-5 py-10 text-center text-sm text-slate-600">
+                  <td colSpan={14} className="px-5 py-10 text-center text-sm text-slate-600">
                     No residuals match the selected filters.
                   </td>
                 </tr>
@@ -282,7 +275,6 @@ function AgentResidualsContent() {
         <div className="border-t border-slate-200 bg-slate-50 p-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <TotalTile label="Total Merchant Sales Volume" value={wholeCurrency(totals.salesVolume)} />
-            <TotalTile label="Total GreenHub Net Profit" value={currency(totals.greenhubNetProfit)} />
             <TotalTile label="Total Transactions per Month" value={totals.transactionsPerMonth.toLocaleString()} />
             <TotalTile label="Total Agent Profit" value={currency(totals.agentProfit)} />
             <TotalTile label="Total Equipment Cost" value={currency(totals.equipmentCost)} />

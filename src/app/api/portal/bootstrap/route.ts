@@ -6,6 +6,7 @@ import {
   supabaseRest,
 } from "@/lib/portal/server";
 import { assertPartnerLibraryAvailable, fetchPartnerLibrary, visibleDealQuery } from "@/lib/portal/partner";
+import { visibleResidualsForRole } from "@/lib/portal/residualVisibility";
 import type {
   AgentLifetimeSummary,
   AgentMonthlySummary,
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
       platforms,
       profile: context.profile,
       portalDeals,
-      residuals,
+      residuals: visibleResidualsForRole(residuals, context.profile.role),
     };
 
     return NextResponse.json(response);
