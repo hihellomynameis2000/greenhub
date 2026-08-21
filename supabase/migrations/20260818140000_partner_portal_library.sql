@@ -205,7 +205,6 @@ set
 
 with folder_template(folder_key, name, description, sort_order) as (
   values
-    ('agent-buy-rate', 'Agent Buy Rate', 'Buy-rate notes, agent margin rules, and quick pricing references.', 10),
     ('application', 'Application', 'Application packets and required merchant intake materials.', 20),
     ('contacts', 'Contacts', 'Underwriting, boarding, and escalation contacts for this platform.', 30),
     ('documents', 'Documents', 'Program PDFs, risk files, pricing sheets, and partner documents.', 40),

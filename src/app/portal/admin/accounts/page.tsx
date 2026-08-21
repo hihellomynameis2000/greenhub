@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Archive, Plus } from "lucide-react";
+import { Archive, Pencil, Plus, Save, X } from "lucide-react";
 import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
-import { PortalActionButton } from "@/components/portal/PortalToast";
+import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
 import { portalRequest } from "@/lib/portal/client";
+import type { MerchantAccount } from "@/lib/portal/types";
 
 const initialForm = {
   accountName: "",
@@ -17,6 +18,15 @@ const initialForm = {
   platformId: "",
   status: "active",
 };
+
+const initialAccountEdit = {
+  accountName: "",
+  assignedAgentId: "",
+  platformId: "",
+  status: "active",
+};
+
+type AccountEditForm = typeof initialAccountEdit;
 
 export default function AdminAccountsPage() {
   return (
@@ -37,6 +47,9 @@ function AdminAccountsContent() {
   const [platformError, setPlatformError] = useState<string | null>(null);
   const [portfolioPlatform, setPortfolioPlatform] = useState("all");
   const [portfolioAgent, setPortfolioAgent] = useState("all");
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [accountEditForm, setAccountEditForm] = useState<AccountEditForm>(initialAccountEdit);
+  const [savingAccountId, setSavingAccountId] = useState<string | null>(null);
   const platformOptions = data
     ? data.platforms.map((platform) => ({ label: platform.name, value: platform.id }))
     : previewPlatforms.map((platform) => ({ label: platform, value: platform }));
@@ -160,6 +173,50 @@ function AdminAccountsContent() {
       );
     } finally {
       setSavingPlatform(false);
+    }
+  }
+
+  function beginEditAccount(account: MerchantAccount) {
+    setEditingAccountId(account.id);
+    setAccountEditForm({
+      accountName: account.account_name,
+      assignedAgentId: account.assigned_agent_id ?? "",
+      platformId: account.platform_id ?? "",
+      status: account.status ?? "active",
+    });
+  }
+
+  function setAccountEditField(field: keyof AccountEditForm, value: string) {
+    setAccountEditForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveAccountEdit(id: string) {
+    if (!accountEditForm.accountName.trim()) {
+      setError("Merchant name is required.");
+      return;
+    }
+
+    setSavingAccountId(id);
+    setError(null);
+
+    try {
+      await portalRequest("/api/portal/accounts", {
+        method: "PATCH",
+        body: JSON.stringify({
+          assignedAgentId: accountEditForm.assignedAgentId,
+          accountName: accountEditForm.accountName,
+          id,
+          platformId: accountEditForm.platformId,
+          status: accountEditForm.status,
+        }),
+      });
+      setEditingAccountId(null);
+      await refresh();
+      showPortalToast({ title: "Account updated", message: "The merchant account was saved." });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The account could not be updated.");
+    } finally {
+      setSavingAccountId(null);
     }
   }
 
@@ -330,7 +387,7 @@ function AdminAccountsContent() {
           </p>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[780px] text-left text-sm text-slate-900">
+          <table className="w-full min-w-[1040px] text-left text-sm text-slate-900">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
               <tr>
                 <th className="px-5 py-3 font-semibold">Merchant</th>
@@ -353,34 +410,124 @@ function AdminAccountsContent() {
                   />
                 </th>
                 <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
               {data
-                ? filteredAccounts.map((account) => (
-                    <tr key={account.id} className="border-t border-slate-300 hover:bg-slate-50">
-                      <td className="px-5 py-3.5 font-semibold text-slate-950">
-                        {account.account_name}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {platformNames.get(account.platform_id ?? "") ?? "Unassigned"}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {agentNames.get(account.assigned_agent_id ?? "") ?? "Unassigned"}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            account.status === "active"
-                              ? "bg-emerald-100 text-emerald-900"
-                              : "bg-amber-100 text-amber-900"
-                          }`}
-                        >
-                          {account.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                ? filteredAccounts.map((account) => {
+                    const editing = editingAccountId === account.id;
+
+                    return (
+                      <tr key={account.id} className="border-t border-slate-300 hover:bg-slate-50">
+                        <td className="px-5 py-3.5 font-semibold text-slate-950">
+                          {editing ? (
+                            <input
+                              className={portalInputClass}
+                              value={accountEditForm.accountName}
+                              onChange={(event) =>
+                                setAccountEditField("accountName", event.target.value)
+                              }
+                            />
+                          ) : (
+                            account.account_name
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {editing ? (
+                            <PortalSelect
+                              ariaLabel="Edit processing platform"
+                              value={accountEditForm.platformId}
+                              onValueChange={(value) => setAccountEditField("platformId", value)}
+                              options={[
+                                { disabled: true, label: "Select platform", value: "" },
+                                ...platformOptions,
+                              ]}
+                            />
+                          ) : (
+                            platformNames.get(account.platform_id ?? "") ?? "Unassigned"
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {editing ? (
+                            <PortalSelect
+                              ariaLabel="Edit assigned agent"
+                              value={accountEditForm.assignedAgentId}
+                              onValueChange={(value) =>
+                                setAccountEditField("assignedAgentId", value)
+                              }
+                              options={[
+                                { disabled: true, label: "Assign agent", value: "" },
+                                ...agentOptions,
+                              ]}
+                            />
+                          ) : (
+                            agentNames.get(account.assigned_agent_id ?? "") ?? "Unassigned"
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {editing ? (
+                            <PortalSelect
+                              ariaLabel="Edit account status"
+                              value={accountEditForm.status}
+                              onValueChange={(value) => setAccountEditField("status", value)}
+                              options={[
+                                { label: "Active", value: "active" },
+                                { label: "Paused", value: "paused" },
+                                { label: "Closed", value: "closed" },
+                              ]}
+                            />
+                          ) : (
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                account.status === "active"
+                                  ? "bg-emerald-100 text-emerald-900"
+                                  : "bg-amber-100 text-amber-900"
+                              }`}
+                            >
+                              {account.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {editing ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={savingAccountId === account.id}
+                                onClick={() => void saveAccountEdit(account.id)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label="Save account changes"
+                                title="Save changes"
+                              >
+                                <Save aria-hidden="true" className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingAccountId === account.id}
+                                onClick={() => setEditingAccountId(null)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label="Cancel account edit"
+                                title="Cancel"
+                              >
+                                <X aria-hidden="true" className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => beginEditAccount(account)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                              aria-label={`Edit ${account.account_name}`}
+                              title="Edit account"
+                            >
+                              <Pencil aria-hidden="true" className="h-4 w-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 : filteredDemoAccounts.map((account) => (
                     <tr key={account.merchant} className="border-t border-slate-300 hover:bg-slate-50">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">{account.merchant}</td>
@@ -397,11 +544,12 @@ function AdminAccountsContent() {
                           {account.status}
                         </span>
                       </td>
+                      <td className="px-5 py-3.5 text-slate-500">Preview</td>
                     </tr>
                   ))}
               {(data ? filteredAccounts.length : filteredDemoAccounts.length) === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-10 text-center text-sm text-slate-600">
+                  <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-600">
                     No merchant accounts match the selected filters.
                   </td>
                 </tr>

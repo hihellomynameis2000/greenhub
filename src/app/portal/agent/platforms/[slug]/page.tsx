@@ -75,7 +75,7 @@ function AgentPlatformDetailContent() {
   const platform = platforms.find(
     (item) => item.slug === params.slug || ("id" in item && item.id === params.slug)
   );
-  const [activeFolderKey, setActiveFolderKey] = useState("agent-buy-rate");
+  const [activeFolderKey, setActiveFolderKey] = useState("application");
   const folders = platform?.folders ?? [];
   const folder = useMemo(
     () => folders.find((item) => folderKey(item) === activeFolderKey) ?? folders[0],

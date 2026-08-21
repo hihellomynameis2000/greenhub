@@ -35,7 +35,20 @@ export async function portalRequest<T>(path: string, init: RequestInit = {}): Pr
       ...init.headers,
     },
   });
-  const body = (await response.json()) as T & { error?: string };
+  const text = await response.text();
+  let body = {} as T & { error?: string };
+
+  if (text) {
+    try {
+      body = JSON.parse(text) as T & { error?: string };
+    } catch {
+      body = {
+        error: response.ok
+          ? "The portal response could not be read."
+          : `Portal request failed. Reference ${response.status}.`,
+      } as T & { error?: string };
+    }
+  }
 
   if (!response.ok) {
     throw new Error(body.error || "The portal request could not be completed.");

@@ -10,11 +10,14 @@ import {
   FileText,
   FolderPlus,
   Link2,
+  Pencil,
   Plus,
   RotateCcw,
+  Save,
   Tags,
   Trash2,
   UploadCloud,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
@@ -44,6 +47,13 @@ const initialPlatform = {
   status: "active",
 };
 
+const initialPlatformEdit = {
+  category: "Other",
+  description: "",
+  name: "",
+  status: "active",
+};
+
 const initialResource = {
   description: "",
   externalUrl: "",
@@ -54,7 +64,14 @@ const initialResource = {
 };
 
 type PlatformRow = PartnerPlatform | PartnerPlatformRecord;
+type PlatformEditForm = typeof initialPlatformEdit;
 type ResourceForm = typeof initialResource;
+
+type UploadTokenResponse = {
+  bucket: string;
+  path: string;
+  token: string;
+};
 
 function slugify(value: string) {
   return value
@@ -76,6 +93,13 @@ function displayStatus(platform: PlatformRow) {
   return "status" in platform
     ? platform.status
     : displayPortalStatus(platform.portal_status);
+}
+
+function platformStatusValue(platform: PlatformRow) {
+  const status = displayStatus(platform);
+  if (status === "Limited") return "limited";
+  if (status === "Restricted" || status === "Hidden") return "restricted";
+  return "active";
 }
 
 function platformId(platform: PlatformRow) {
@@ -119,6 +143,8 @@ function AdminPlatformLibraryContent() {
   const [categoryForm, setCategoryForm] = useState("");
   const [resourceForm, setResourceForm] = useState<ResourceForm>(initialResource);
   const [resourceFile, setResourceFile] = useState<File | null>(null);
+  const [editingPlatformId, setEditingPlatformId] = useState<string | null>(null);
+  const [platformEditForm, setPlatformEditForm] = useState<PlatformEditForm>(initialPlatformEdit);
   const [previewCategoryNames, setPreviewCategoryNames] = useState(
     platformCategories.filter((item) => item !== "All categories")
   );
@@ -193,6 +219,67 @@ function AdminPlatformLibraryContent() {
       }
       return next;
     });
+  }
+
+  function setPlatformEditField(field: keyof PlatformEditForm, value: string) {
+    setPlatformEditForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function beginEditPlatform(platform: PlatformRow) {
+    setEditingPlatformId(platformId(platform));
+    setPlatformEditForm({
+      category: displayCategory(platform),
+      description: platform.description || "",
+      name: platform.name,
+      status: platformStatusValue(platform),
+    });
+  }
+
+  async function savePlatformEdit() {
+    if (!editingPlatformId) return;
+    const name = platformEditForm.name.trim();
+    if (!name) {
+      setError("Platform name is required.");
+      return;
+    }
+
+    setSavingPlatform(true);
+    setError(null);
+
+    try {
+      if (data) {
+        await portalRequest("/api/portal/partner/platforms", {
+          method: "PATCH",
+          body: JSON.stringify({
+            ...platformEditForm,
+            id: editingPlatformId,
+          }),
+        });
+        await refresh();
+      } else {
+        setPreviewPlatforms((current) =>
+          current.map((platform) =>
+            platform.slug === editingPlatformId
+              ? {
+                  ...platform,
+                  category: platformEditForm.category,
+                  description: platformEditForm.description,
+                  name,
+                  status: displayPortalStatus(platformEditForm.status),
+                  tags: [platformEditForm.category],
+                }
+              : platform
+          )
+        );
+      }
+
+      setEditingPlatformId(null);
+      showPortalToast({ title: "Platform updated", message: `${name} was saved.` });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The platform could not be updated.");
+    } finally {
+      setSavingPlatform(false);
+    }
   }
 
   async function addCategory() {
@@ -299,25 +386,41 @@ function AdminPlatformLibraryContent() {
 
     try {
       if (resourceFile) {
-        const {
-          data: { session },
-        } = await getPortalSupabase().auth.getSession();
-        if (!session?.access_token) throw new Error("Sign in is required to upload resources.");
-
-        const formData = new FormData();
-        formData.append("file", resourceFile);
-        formData.append("platformId", activeResourcePlatformId);
-        formData.append("folderId", activeResourceFolderId);
-        formData.append("title", resourceForm.title);
-        formData.append("description", resourceForm.description);
-
-        const response = await fetch("/api/portal/partner/upload", {
+        const upload = await portalRequest<UploadTokenResponse>("/api/portal/partner/upload-token", {
           method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-          body: formData,
+          body: JSON.stringify({
+            fileName: resourceFile.name,
+            fileSize: resourceFile.size,
+            fileType: resourceFile.type,
+            folderId: activeResourceFolderId,
+            platformId: activeResourcePlatformId,
+            title: resourceForm.title,
+          }),
         });
-        const payload = (await response.json()) as { error?: string };
-        if (!response.ok) throw new Error(payload.error || "The resource file could not be uploaded.");
+
+        const { error: uploadError } = await getPortalSupabase()
+          .storage
+          .from(upload.bucket)
+          .uploadToSignedUrl(upload.path, upload.token, resourceFile, {
+            contentType: resourceFile.type || "application/octet-stream",
+          });
+
+        if (uploadError) throw new Error("The resource file could not be uploaded.");
+
+        await portalRequest("/api/portal/partner/resources", {
+          method: "POST",
+          body: JSON.stringify({
+            ...resourceForm,
+            externalUrl: resourceForm.externalUrl,
+            fileName: resourceFile.name,
+            fileSize: resourceFile.size,
+            folderId: activeResourceFolderId,
+            platformId: activeResourcePlatformId,
+            resourceType: "document",
+            storageBucket: upload.bucket,
+            storagePath: upload.path,
+          }),
+        });
       } else {
         await portalRequest("/api/portal/partner/resources", {
           method: "POST",
@@ -839,6 +942,73 @@ function AdminPlatformLibraryContent() {
                     <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-700">
                       {platform.description || "Processing platform resources and submission guidance."}
                     </p>
+                    {editingPlatformId === platformId(platform) ? (
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                            Platform name
+                            <input
+                              className={portalInputClass}
+                              value={platformEditForm.name}
+                              onChange={(event) => setPlatformEditField("name", event.target.value)}
+                            />
+                          </label>
+                          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                            Category
+                            <PortalSelect
+                              value={platformEditForm.category}
+                              onValueChange={(value) => setPlatformEditField("category", value)}
+                              options={categoryOptions
+                                .filter((item) => item !== "All categories")
+                                .map((item) => ({ label: item, value: item }))}
+                            />
+                          </label>
+                          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                            Status
+                            <PortalSelect
+                              value={platformEditForm.status}
+                              onValueChange={(value) => setPlatformEditField("status", value)}
+                              options={[
+                                { label: "Active", value: "active" },
+                                { label: "Limited", value: "limited" },
+                                { label: "Restricted", value: "restricted" },
+                              ]}
+                            />
+                          </label>
+                          <label className="grid gap-1.5 text-sm font-medium text-slate-700 lg:col-span-2">
+                            Description
+                            <textarea
+                              className={portalInputClass}
+                              rows={3}
+                              value={platformEditForm.description}
+                              onChange={(event) =>
+                                setPlatformEditField("description", event.target.value)
+                              }
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={savingPlatform}
+                            onClick={() => void savePlatformEdit()}
+                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Save aria-hidden="true" className="h-4 w-4" />
+                            Save changes
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingPlatform}
+                            onClick={() => setEditingPlatformId(null)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <X aria-hidden="true" className="h-4 w-4" />
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap gap-2">
                       {platform.folders.map((folder) => {
                         const key = folderKey(folder);
@@ -869,6 +1039,14 @@ function AdminPlatformLibraryContent() {
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => beginEditPlatform(platform)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                    >
+                      <Pencil aria-hidden="true" className="h-4 w-4" />
+                      Edit
+                    </button>
                     <button
                       type="button"
                       onClick={() => {

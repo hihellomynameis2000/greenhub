@@ -1,5 +1,4 @@
 import {
-  Banknote,
   BookOpen,
   ClipboardList,
   FileText,
@@ -11,7 +10,6 @@ import {
 export type PlatformStatus = "Active" | "Limited" | "Restricted" | "Hidden";
 
 export type PlatformFolderKey =
-  | "agent-buy-rate"
   | "application"
   | "contacts"
   | "documents"
@@ -60,13 +58,6 @@ export type CrmDeal = {
 };
 
 export const standardFolders: PartnerPlatformFolder[] = [
-  {
-    key: "agent-buy-rate",
-    name: "Agent Buy Rate",
-    summary: "Buy-rate notes, agent margin rules, and quick pricing references.",
-    icon: Banknote,
-    items: ["Standard buy-rate card", "Agent revenue share notes", "Exception approval guidance"],
-  },
   {
     key: "application",
     name: "Application",
@@ -135,7 +126,6 @@ export const partnerPlatforms: PartnerPlatform[] = [
     description: "Cashless processing program with PPS submission docs and boarding support.",
     tags: ["Cashless", "Debit", "PPS"],
     folders: folders({
-      "agent-buy-rate": ["PPS buy-rate sheet", "Agent payout examples", "Volume-tier notes"],
       documents: ["PPS program overview", "Merchant risk matrix", "Greenway boarding packet"],
       "how-to-submit": ["Collect merchant docs", "Upload application packet", "Send to PPS boarding queue"],
     }),
@@ -149,7 +139,6 @@ export const partnerPlatforms: PartnerPlatform[] = [
     description: "ACH and alternative payment program for qualified merchants.",
     tags: ["ACH", "Avidia", "Alt Pay"],
     folders: folders({
-      "agent-buy-rate": ["Avidia residual schedule", "ACH pricing reference", "Agent revenue share notes"],
       documents: ["ACH overview deck", "Risk review checklist", "Pricing sheet"],
       contacts: ["ACH underwriting", "Avidia boarding", "Linked2Pay escalation desk"],
     }),
@@ -163,7 +152,6 @@ export const partnerPlatforms: PartnerPlatform[] = [
     description: "High-risk placement option with current Paynex program notes and support contacts.",
     tags: ["High Risk", "Card Not Present", "Paynex"],
     folders: folders({
-      "agent-buy-rate": ["Paynex buy-rate sheet", "Agent split examples", "Exception approval process"],
       application: ["Paynex application", "Merchant document checklist", "Beneficial owner requirements"],
       "program-details": ["Restricted MCC notes", "Gateway compatibility", "Reserve expectations"],
     }),
@@ -177,7 +165,6 @@ export const partnerPlatforms: PartnerPlatform[] = [
     description: "Cash discount and debit-focused program for retail merchant opportunities.",
     tags: ["Cashless", "Retail", "Debit"],
     folders: folders({
-      "agent-buy-rate": ["$1.60 buy-rate guide", "Transaction margin examples", "Agent payout scenarios"],
       "program-details": ["Live merchant examples", "Supported terminal notes", "Risk criteria"],
     }),
   },

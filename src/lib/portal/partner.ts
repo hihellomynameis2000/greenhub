@@ -14,12 +14,6 @@ import type {
 
 export const STANDARD_PLATFORM_FOLDERS = [
   {
-    folder_key: "agent-buy-rate",
-    name: "Agent Buy Rate",
-    description: "Buy-rate notes, agent margin rules, and quick pricing references.",
-    sort_order: 10,
-  },
-  {
     folder_key: "application",
     name: "Application",
     description: "Application packets and required merchant intake materials.",
@@ -96,7 +90,7 @@ export function normalizePartnerPlatforms(
   return platforms
     .map((platform) => {
       const folders = (platform.platform_resource_folders ?? [])
-        .filter((folder) => folder.is_active)
+        .filter((folder) => folder.is_active && folder.folder_key !== "agent-buy-rate")
         .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
         .map((folder) => {
           const resources = (folder.platform_resources ?? [])
