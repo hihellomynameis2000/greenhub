@@ -238,13 +238,28 @@ function normalizedLookupName(value: string | null | undefined) {
     .trim();
 }
 
-function withPobCalculations(form: ResidualForm) {
+function withPobCalculations(form: ResidualForm, changedField?: keyof ResidualForm) {
   const transactions = amount(form.transactionsPerMonth);
   const agentProfitPerTransaction = amount(form.profitPerTransaction);
-  const greenhubPobProfitPerTransaction = amount(form.greenhubPobProfitPerTransaction);
+  const grossPobProfitPerTransaction =
+    amount(form.surcharge) - amount(form.greenhubPobBuyRate) - amount(form.rebate);
+  const calculatedGreenhubPobProfitPerTransaction =
+    grossPobProfitPerTransaction || agentProfitPerTransaction
+      ? grossPobProfitPerTransaction - agentProfitPerTransaction
+      : 0;
+  const greenhubPobProfitPerTransaction =
+    changedField === "greenhubPobProfitPerTransaction"
+      ? amount(form.greenhubPobProfitPerTransaction)
+      : calculatedGreenhubPobProfitPerTransaction;
 
   return {
     ...form,
+    greenhubPobProfitPerTransaction:
+      changedField === "greenhubPobProfitPerTransaction"
+        ? form.greenhubPobProfitPerTransaction
+        : greenhubPobProfitPerTransaction
+          ? inputAmount(greenhubPobProfitPerTransaction)
+          : form.greenhubPobProfitPerTransaction,
     agentProfit:
       transactions && agentProfitPerTransaction
         ? inputAmount(transactions * agentProfitPerTransaction)
@@ -258,7 +273,10 @@ function withPobCalculations(form: ResidualForm) {
 
 function calculatedPobField(field: keyof ResidualForm) {
   return field === "transactionsPerMonth" ||
+    field === "greenhubPobBuyRate" ||
     field === "profitPerTransaction" ||
+    field === "rebate" ||
+    field === "surcharge" ||
     field === "greenhubPobProfitPerTransaction";
 }
 
@@ -468,7 +486,7 @@ function AdminResidualsContent() {
     setForm((current) => {
       if (field !== "merchantAccountId") {
         const next = { ...current, [field]: value };
-        return calculatedPobField(field) ? withPobCalculations(next) : next;
+        return calculatedPobField(field) ? withPobCalculations(next, field) : next;
       }
 
       const account = data?.accounts.find((item) => item.id === value);

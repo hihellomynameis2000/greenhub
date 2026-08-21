@@ -6,6 +6,8 @@ export type ParsedResidualImportRow = {
   greenhubPobBuyRate: string;
   greenhubPobNetProfit: string;
   greenhubPobProfitPerTransaction: string;
+  grossPobProfitPerTransaction: string;
+  integrationFee: string;
   merchantName: string;
   merchantNotes: string;
   monthlySalesVolume: string;
@@ -34,23 +36,29 @@ const fieldAliases: Record<ImportField, string[]> = {
     "share %",
     "share percent",
   ],
-  agentProfit: ["agent profit", "agent residual", "agent pob residual", "agent amount due"],
+  agentProfit: ["agent profit", "agent residual", "agent pob residual", "agent amount due", "amount due"],
   equipmentCost: ["equipment cost"],
   greenhubNetProfit: ["greenhub net profit", "greenhub cc net profit", "cc greenhub net profit"],
   greenhubPobBuyRate: ["greenhub pob buy rate", "pob buy rate", "iso buy rate", "buy rate"],
-  greenhubPobNetProfit: ["greenhub pob net profit", "pob net profit", "amount due"],
+  greenhubPobNetProfit: ["greenhub pob net profit", "pob net profit"],
   greenhubPobProfitPerTransaction: [
     "greenhub pob profit per transaction",
     "greenhub pob profit / transaction",
     "greenhub profit per transaction",
     "greenhub profit / transaction",
     "pob profit per transaction",
-    "net surcharge",
   ],
+  grossPobProfitPerTransaction: [
+    "net surcharge",
+    "gross pob profit per transaction",
+    "gross profit per transaction",
+    "pob margin per transaction",
+  ],
+  integrationFee: ["integration fee"],
   merchantName: ["merchant", "merchant name", "account", "account name", "location name"],
   merchantNotes: ["merchant notes", "notes", "billing model", "iso/referral"],
   monthlySalesVolume: ["merchant sales volume", "monthly sales volume", "sales volume"],
-  profitPerTransaction: ["agent profit per transaction", "agent profit / transaction"],
+  profitPerTransaction: ["agent profit per transaction", "agent profit / transaction", "amount due per transaction"],
   rebate: ["rebate to merchant", "merchant rebate", "rebate"],
   sourceStatus: ["status"],
   surcharge: ["surcharge"],
@@ -92,6 +100,10 @@ function formatMoney(value: number) {
 
 function formatRate(value: number) {
   return value ? Number(value.toFixed(4)).toString() : "";
+}
+
+function formatSignedRate(value: number) {
+  return Number.isFinite(value) ? Number(value.toFixed(4)).toString() : "";
 }
 
 function shareValue(value: string) {
@@ -318,6 +330,7 @@ export function parseRows(fileName: string, sheetName: string, rows: string[][])
     const surcharge = valueAt(row, best.map.get("surcharge"));
     const rebate = valueAt(row, best.map.get("rebate"));
     const greenhubPobBuyRate = valueAt(row, best.map.get("greenhubPobBuyRate"));
+    const integrationFee = valueAt(row, best.map.get("integrationFee"));
     const transactionsPerMonth = valueAt(row, best.map.get("transactionsPerMonth"));
     const monthlySalesVolume = valueAt(row, best.map.get("monthlySalesVolume"));
     const greenhubNetProfit = valueAt(row, best.map.get("greenhubNetProfit"));
@@ -325,29 +338,40 @@ export function parseRows(fileName: string, sheetName: string, rows: string[][])
     const equipmentCost = valueAt(row, best.map.get("equipmentCost"));
     let agentProfit = valueAt(row, best.map.get("agentProfit"));
     let profitPerTransaction = valueAt(row, best.map.get("profitPerTransaction"));
+    let grossPobProfitPerTransaction = valueAt(row, best.map.get("grossPobProfitPerTransaction"));
     let greenhubPobProfitPerTransaction = valueAt(row, best.map.get("greenhubPobProfitPerTransaction"));
     let greenhubPobNetProfit = valueAt(row, best.map.get("greenhubPobNetProfit"));
 
     const transactions = numberValue(transactionsPerMonth);
-    if (!greenhubPobProfitPerTransaction && greenhubPobNetProfit && transactions) {
-      greenhubPobProfitPerTransaction = formatRate(numberValue(greenhubPobNetProfit) / transactions);
-    }
-    if (!greenhubPobNetProfit && greenhubPobProfitPerTransaction && transactions) {
-      greenhubPobNetProfit = formatMoney(numberValue(greenhubPobProfitPerTransaction) * transactions);
-    }
     if (!profitPerTransaction && agentProfit && transactions) {
       profitPerTransaction = formatRate(numberValue(agentProfit) / transactions);
+    }
+    if (!grossPobProfitPerTransaction) {
+      const gross =
+        numberValue(surcharge) -
+        numberValue(greenhubPobBuyRate) -
+        numberValue(rebate) -
+        numberValue(integrationFee);
+      if (gross) grossPobProfitPerTransaction = formatSignedRate(gross);
+    }
+    if (!profitPerTransaction && grossPobProfitPerTransaction && shareValue(agentCommissionStructure)) {
+      profitPerTransaction = formatRate(
+        numberValue(grossPobProfitPerTransaction) * shareValue(agentCommissionStructure)
+      );
     }
     if (!agentProfit && profitPerTransaction && transactions) {
       agentProfit = formatMoney(numberValue(profitPerTransaction) * transactions);
     }
-    if (!profitPerTransaction && greenhubPobProfitPerTransaction && shareValue(agentCommissionStructure)) {
-      profitPerTransaction = formatRate(
-        numberValue(greenhubPobProfitPerTransaction) * shareValue(agentCommissionStructure)
+    if (!greenhubPobProfitPerTransaction && grossPobProfitPerTransaction && profitPerTransaction) {
+      greenhubPobProfitPerTransaction = formatSignedRate(
+        numberValue(grossPobProfitPerTransaction) - numberValue(profitPerTransaction)
       );
     }
-    if (!agentProfit && greenhubPobNetProfit && shareValue(agentCommissionStructure)) {
-      agentProfit = formatMoney(numberValue(greenhubPobNetProfit) * shareValue(agentCommissionStructure));
+    if (!greenhubPobProfitPerTransaction && greenhubPobNetProfit && transactions) {
+      greenhubPobProfitPerTransaction = formatSignedRate(numberValue(greenhubPobNetProfit) / transactions);
+    }
+    if (!greenhubPobNetProfit && greenhubPobProfitPerTransaction && transactions) {
+      greenhubPobNetProfit = formatMoney(numberValue(greenhubPobProfitPerTransaction) * transactions);
     }
 
     importedRows.push({
@@ -358,6 +382,8 @@ export function parseRows(fileName: string, sheetName: string, rows: string[][])
       greenhubPobBuyRate,
       greenhubPobNetProfit,
       greenhubPobProfitPerTransaction,
+      grossPobProfitPerTransaction,
+      integrationFee,
       merchantName,
       merchantNotes: [sourceStatus ? `Source status: ${sourceStatus}` : "", valueAt(row, best.map.get("merchantNotes"))]
         .filter(Boolean)
