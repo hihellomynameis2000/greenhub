@@ -32,6 +32,7 @@ export type PartnerPlatform = {
   folders: PartnerPlatformFolder[];
   lastUpdated: string;
   name: string;
+  residualType?: "cc" | "pob";
   slug: string;
   status: PlatformStatus;
   tags: string[];
@@ -122,6 +123,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "greenway-pps",
     category: "Cashless / Debit",
     status: "Active",
+    residualType: "pob",
     lastUpdated: "Jul 12, 2026",
     description: "Cashless processing program with PPS submission docs and boarding support.",
     tags: ["Cashless", "Debit", "PPS"],
@@ -135,6 +137,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "linked2pay-avida",
     category: "ACH / Alt Pay",
     status: "Active",
+    residualType: "cc",
     lastUpdated: "Jul 9, 2026",
     description: "ACH and alternative payment program for qualified merchants.",
     tags: ["ACH", "Avidia", "Alt Pay"],
@@ -148,6 +151,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "paynex",
     category: "High Risk",
     status: "Active",
+    residualType: "pob",
     lastUpdated: "Jul 10, 2026",
     description: "High-risk placement option with current Paynex program notes and support contacts.",
     tags: ["High Risk", "Card Not Present", "Paynex"],
@@ -161,6 +165,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "ellacash",
     category: "Cashless / Debit",
     status: "Active",
+    residualType: "pob",
     lastUpdated: "Jul 8, 2026",
     description: "Cash discount and debit-focused program for retail merchant opportunities.",
     tags: ["Cashless", "Retail", "Debit"],
@@ -173,6 +178,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "best-rate-nuvei",
     category: "Best Rate",
     status: "Limited",
+    residualType: "cc",
     lastUpdated: "Jun 28, 2026",
     description: "Best Rate placement option for qualified merchants requiring Nuvei support.",
     tags: ["Best Rate", "Nuvei"],
@@ -183,6 +189,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "best-rate-paya",
     category: "Best Rate",
     status: "Active",
+    residualType: "cc",
     lastUpdated: "Jun 30, 2026",
     description: "Paya-backed Best Rate placement with standard Schedule A package.",
     tags: ["Best Rate", "Paya"],
@@ -193,6 +200,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "elitepay-adyen",
     category: "ElitePay",
     status: "Active",
+    residualType: "cc",
     lastUpdated: "Jul 2, 2026",
     description: "ElitePay Adyen program package for agents submitting qualified merchants.",
     tags: ["ElitePay", "Adyen"],
@@ -203,6 +211,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "elitepay-aux",
     category: "ElitePay",
     status: "Active",
+    residualType: "cc",
     lastUpdated: "Jul 1, 2026",
     description: "ElitePay AUX program resources and submission packet.",
     tags: ["ElitePay", "AUX"],
@@ -213,6 +222,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "paybotx-fiserv",
     category: "Paybotx",
     status: "Active",
+    residualType: "cc",
     lastUpdated: "Jun 27, 2026",
     description: "Paybotx Fiserv processing program with current boarding files.",
     tags: ["Paybotx", "Fiserv"],
@@ -223,6 +233,7 @@ export const partnerPlatforms: PartnerPlatform[] = [
     slug: "valmar-cb-cal",
     category: "Valmar",
     status: "Restricted",
+    residualType: "cc",
     lastUpdated: "Jun 18, 2026",
     description: "Restricted Valmar placement with approval required before submission.",
     tags: ["Valmar", "Restricted"],

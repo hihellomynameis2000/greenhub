@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   optionalString,
+  PortalApiError,
   portalErrorResponse,
   requirePortalContext,
   requiredString,
@@ -14,7 +15,42 @@ import {
   seedPlatformFolders,
   slugify,
 } from "@/lib/portal/partner";
+import { normalizeResidualPlatformType } from "@/lib/portal/residualType";
 import type { Platform } from "@/lib/portal/types";
+
+type PlatformWriteOptions = {
+  body: Record<string, unknown>;
+  method: "PATCH" | "POST";
+  query?: URLSearchParams;
+};
+
+function residualTypeColumnMissing(error: unknown) {
+  return (
+    error instanceof PortalApiError &&
+    /residual_type|schema cache|column/i.test(error.message)
+  );
+}
+
+async function writePlatform({ body, method, query }: PlatformWriteOptions) {
+  try {
+    return await supabaseRest<Platform[]>("platforms", {
+      method,
+      prefer: "return=representation",
+      query,
+      body,
+    });
+  } catch (error) {
+    if (!residualTypeColumnMissing(error)) throw error;
+    const { residual_type: _residualType, ...fallbackBody } = body;
+
+    return supabaseRest<Platform[]>("platforms", {
+      method,
+      prefer: "return=representation",
+      query,
+      body: fallbackBody,
+    });
+  }
+}
 
 async function restrictPlatformAccess(platformId: string, actorId: string) {
   await supabaseRest("agent_platform_access", {
@@ -104,15 +140,15 @@ export async function POST(request: NextRequest) {
     const category = optionalString(body.category) ?? "Other";
     const description = optionalString(body.description);
     const portalStatus = normalizePortalStatus(body.status ?? body.portalStatus);
+    const residualType = normalizeResidualPlatformType(body.residualType ?? body.residual_type);
 
     const existing = await supabaseRest<Platform[]>("platforms", {
       query: new URLSearchParams({ select: "*", slug: `eq.${slug}`, limit: "1" }),
     });
 
     const platforms = existing[0]
-      ? await supabaseRest<Platform[]>("platforms", {
+      ? await writePlatform({
           method: "PATCH",
-          prefer: "return=representation",
           query: new URLSearchParams({ id: `eq.${existing[0].id}` }),
           body: {
             category,
@@ -121,18 +157,19 @@ export async function POST(request: NextRequest) {
             last_updated_at: new Date().toISOString(),
             name,
             portal_status: portalStatus,
+            residual_type: residualType,
             slug,
           },
         })
-      : await supabaseRest<Platform[]>("platforms", {
+      : await writePlatform({
           method: "POST",
-          prefer: "return=representation",
           body: {
             category,
             description,
             is_active: true,
             name,
             portal_status: portalStatus,
+            residual_type: residualType,
             slug,
           },
         });
@@ -142,6 +179,7 @@ export async function POST(request: NextRequest) {
     await writeAuditLog(context, "partner_platform.created", "platforms", platform.id, {
       category,
       name,
+      residualType,
       slug,
     });
 
@@ -170,11 +208,13 @@ export async function PATCH(request: NextRequest) {
     if (body.status !== undefined || body.portalStatus !== undefined) {
       updates.portal_status = normalizePortalStatus(body.status ?? body.portalStatus);
     }
+    if (body.residualType !== undefined || body.residual_type !== undefined) {
+      updates.residual_type = normalizeResidualPlatformType(body.residualType ?? body.residual_type);
+    }
     if (body.isActive !== undefined) updates.is_active = Boolean(body.isActive);
 
-    const platforms = await supabaseRest<Platform[]>("platforms", {
+    const platforms = await writePlatform({
       method: "PATCH",
-      prefer: "return=representation",
       query: new URLSearchParams({ id: `eq.${id}` }),
       body: updates,
     });

@@ -34,6 +34,7 @@ import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/P
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { showPortalToast } from "@/components/portal/PortalToast";
 import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
+import { inferredResidualPlatformType, residualTypeLabel } from "@/lib/portal/residualType";
 import type {
   PartnerPlatformRecord,
   PlatformFolderWithResources,
@@ -44,6 +45,7 @@ const initialPlatform = {
   category: "Cashless / Debit",
   description: "",
   name: "",
+  residualType: "cc",
   status: "active",
 };
 
@@ -51,6 +53,7 @@ const initialPlatformEdit = {
   category: "Other",
   description: "",
   name: "",
+  residualType: "cc",
   status: "active",
 };
 
@@ -86,6 +89,10 @@ function displayName(platform: PlatformRow) {
 
 function displayCategory(platform: PlatformRow) {
   return platform.category ?? "Other";
+}
+
+function displayResidualType(platform: PlatformRow) {
+  return inferredResidualPlatformType(platform);
 }
 
 function displayStatus(platform: PlatformRow) {
@@ -231,6 +238,7 @@ function AdminPlatformLibraryContent() {
       category: displayCategory(platform),
       description: platform.description || "",
       name: platform.name,
+      residualType: displayResidualType(platform),
       status: platformStatusValue(platform),
     });
   }
@@ -265,6 +273,10 @@ function AdminPlatformLibraryContent() {
                   category: platformEditForm.category,
                   description: platformEditForm.description,
                   name,
+                  residualType: inferredResidualPlatformType({
+                    name,
+                    residualType: platformEditForm.residualType,
+                  }),
                   status: displayPortalStatus(platformEditForm.status),
                   tags: [platformEditForm.category],
                 }
@@ -344,6 +356,10 @@ function AdminPlatformLibraryContent() {
           folders: standardFolders,
           lastUpdated: "Today",
           name,
+          residualType: inferredResidualPlatformType({
+            name,
+            residualType: platformForm.residualType,
+          }),
           slug: slugify(name),
           status: displayPortalStatus(platformForm.status),
           tags: [platformForm.category],
@@ -658,6 +674,19 @@ function AdminPlatformLibraryContent() {
                 />
               </label>
               <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                Residual type
+                <PortalSelect
+                  value={platformForm.residualType}
+                  onValueChange={(value) =>
+                    setPlatformForm((current) => ({ ...current, residualType: value }))
+                  }
+                  options={[
+                    { label: "CC residual", value: "cc" },
+                    { label: "POB residual", value: "pob" },
+                  ]}
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium text-slate-700">
                 Status
                 <PortalSelect
                   value={platformForm.status}
@@ -937,6 +966,9 @@ function AdminPlatformLibraryContent() {
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
                         {displayCategory(platform)}
                       </span>
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                        {residualTypeLabel(displayResidualType(platform))}
+                      </span>
                     </div>
                     <h3 className="mt-3 text-lg font-semibold text-slate-950">{platform.name}</h3>
                     <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-700">
@@ -961,6 +993,17 @@ function AdminPlatformLibraryContent() {
                               options={categoryOptions
                                 .filter((item) => item !== "All categories")
                                 .map((item) => ({ label: item, value: item }))}
+                            />
+                          </label>
+                          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                            Residual type
+                            <PortalSelect
+                              value={platformEditForm.residualType}
+                              onValueChange={(value) => setPlatformEditField("residualType", value)}
+                              options={[
+                                { label: "CC residual", value: "cc" },
+                                { label: "POB residual", value: "pob" },
+                              ]}
                             />
                           </label>
                           <label className="grid gap-1.5 text-sm font-medium text-slate-700">

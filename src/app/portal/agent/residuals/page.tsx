@@ -7,6 +7,7 @@ import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
+import { inferredResidualPlatformType, type ResidualPlatformType } from "@/lib/portal/residualType";
 
 const residualsPerPage = 10;
 
@@ -65,6 +66,7 @@ type AgentResidualRow = {
   platform: string;
   profitPerTransaction: number;
   rebate: number;
+  residualType: ResidualPlatformType;
   salesVolume: number;
   status: "draft" | "finalized" | string;
   surcharge: number;
@@ -102,12 +104,11 @@ function monthFilterValue(label: string) {
 }
 
 function pobResidual(row: AgentResidualRow) {
-  const calculated = row.transactionsPerMonth * row.profitPerTransaction;
-  return calculated > 0 ? calculated : row.agentProfit;
+  return row.residualType === "pob" ? row.agentProfit : 0;
 }
 
 function ccResidual(row: AgentResidualRow) {
-  return Math.max(row.agentProfit - pobResidual(row), 0);
+  return row.residualType === "cc" ? row.agentProfit : 0;
 }
 
 function agentNetResidual(row: AgentResidualRow) {
@@ -171,6 +172,7 @@ function AgentResidualsContent() {
   const accountNames = new Map(data?.accounts.map((account) => [account.id, account.account_name]) ?? []);
   const accountTerms = new Map(data?.accounts.map((account) => [account.id, account.commission_structure]) ?? []);
   const platformNames = new Map(data?.platforms.map((item) => [item.id, item.name]) ?? []);
+  const platformTypes = new Map(data?.platforms.map((item) => [item.id, inferredResidualPlatformType(item)]) ?? []);
 
   const monthOptions = data
     ? [
@@ -213,12 +215,13 @@ function AgentResidualsContent() {
         platform: platformNames.get(row.platform_id ?? "") ?? "Unassigned",
         profitPerTransaction: amount(row.profit_per_transaction),
         rebate: amount(row.rebate),
+        residualType: platformTypes.get(row.platform_id ?? "") ?? inferredResidualPlatformType(platformNames.get(row.platform_id ?? "")),
         salesVolume: amount(row.monthly_sales_volume),
         status: row.residual_status,
         surcharge: amount(row.surcharge),
         transactionsPerMonth: amount(row.transactions_per_month),
       })) ?? [],
-    [accountNames, accountTerms, data, platformNames]
+    [accountNames, accountTerms, data, platformNames, platformTypes]
   );
   const demoRows = useMemo<AgentResidualRow[]>(
     () =>
@@ -234,6 +237,7 @@ function AgentResidualsContent() {
         platform: row.platform,
         profitPerTransaction: amount(row.profitPerTransaction),
         rebate: amount(row.rebate),
+        residualType: inferredResidualPlatformType(row.platform),
         salesVolume: amount(row.volume),
         status: row.status.toLowerCase(),
         surcharge: amount(row.surcharge),
@@ -246,12 +250,14 @@ function AgentResidualsContent() {
       (applied.month === "all" || row.monthValue === applied.month) &&
       (applied.platform === "all" || row.platform === applied.platform || platformNames.get(applied.platform) === row.platform)
   );
-  const filteredRowCount = filteredRows.length;
+  const visibleRows =
+    reportView === "total" ? filteredRows : filteredRows.filter((row) => row.residualType === reportView);
+  const filteredRowCount = visibleRows.length;
   const pageCount = Math.max(1, Math.ceil(filteredRowCount / residualsPerPage));
   const activePage = Math.min(page, pageCount);
   const pageOffset = (activePage - 1) * residualsPerPage;
-  const paginatedRows = filteredRows.slice(pageOffset, pageOffset + residualsPerPage);
-  const totals = totalRows(filteredRows);
+  const paginatedRows = visibleRows.slice(pageOffset, pageOffset + residualsPerPage);
+  const totals = totalRows(visibleRows);
 
   return (
     <>
@@ -266,7 +272,7 @@ function AgentResidualsContent() {
             <div>
               <h2 className="text-lg font-semibold text-slate-950">Agent Residual Report</h2>
               <p className="mt-1 text-sm text-slate-700">
-                Agent-visible payout fields only. GreenHub profit, POB buy rate, and merchant notes are hidden here.
+                Agent-visible payout fields only. Admin-only profit fields, POB buy rate, and merchant notes are hidden here.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[170px_220px_auto]">

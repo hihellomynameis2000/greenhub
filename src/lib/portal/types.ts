@@ -23,6 +23,7 @@ export type Platform = {
   last_updated_at?: string | null;
   name: string;
   portal_status?: "active" | "limited" | "restricted" | null;
+  residual_type?: "cc" | "pob" | null;
   slug?: string | null;
   sort_order?: number | null;
   updated_at?: string | null;

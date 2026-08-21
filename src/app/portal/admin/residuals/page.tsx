@@ -9,6 +9,7 @@ import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/P
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
 import { portalRequest } from "@/lib/portal/client";
+import { inferredResidualPlatformType, type ResidualPlatformType } from "@/lib/portal/residualType";
 import type { MonthlyResidual } from "@/lib/portal/types";
 
 const months = [
@@ -49,7 +50,7 @@ const residualReportViews: Array<{
     label: "CC Residual",
   },
   {
-    description: "Combined POB and CC residuals with equipment-cost deductions.",
+    description: "Combined POB and CC agent residuals with equipment-cost deductions.",
     icon: Layers3,
     id: "total",
     label: "Total Residual",
@@ -104,6 +105,7 @@ type ResidualReportRow = {
   platform: string;
   profitPerTransaction: number;
   rebate: number;
+  residualType: ResidualPlatformType;
   salesVolume: number;
   status: "draft" | "finalized";
   surcharge: number;
@@ -264,6 +266,18 @@ function AdminResidualsContent() {
     () => new Map(data?.platforms.map((platform) => [platform.id, platform.name]) ?? []),
     [data?.platforms]
   );
+  const selectedAccount = data?.accounts.find((account) => account.id === form.merchantAccountId);
+  const effectivePlatformId = form.platformId || selectedAccount?.platform_id || "";
+  const selectedPlatformName =
+    platformOptions.find((platform) => platform.value === effectivePlatformId)?.label ||
+    platformNames.get(effectivePlatformId) ||
+    effectivePlatformId;
+  const selectedPlatformRecord = data?.platforms.find((platform) => platform.id === effectivePlatformId);
+  const residualEntryType = effectivePlatformId
+    ? inferredResidualPlatformType(selectedPlatformRecord ?? selectedPlatformName)
+    : "all";
+  const showPobFields = residualEntryType !== "cc";
+  const showCcFields = residualEntryType !== "pob";
   const reportMonthOptions = data
     ? [
         { label: "All months", value: "all" },
@@ -314,31 +328,44 @@ function AdminResidualsContent() {
   }, [draftsOpen]);
 
   function updateForm(field: keyof ResidualForm, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => {
+      if (field !== "merchantAccountId") return { ...current, [field]: value };
+
+      const account = data?.accounts.find((item) => item.id === value);
+      return {
+        ...current,
+        merchantAccountId: value,
+        agentId: account ? account.assigned_agent_id ?? "" : current.agentId,
+        platformId: account ? account.platform_id ?? "" : current.platformId,
+      };
+    });
   }
 
   function apiPayload(nextStatus: ResidualForm["status"]) {
+    const pobEntry = residualEntryType === "pob";
+    const ccEntry = residualEntryType === "cc";
+
     return {
       agentCommissionStructure: form.agentCommissionStructure,
       agentId: form.agentId,
       agentProfit: form.agentProfit,
       equipmentCost: form.equipmentCost,
-      greenhubNetProfit: form.netProfit,
-      greenhubPobBuyRate: form.greenhubPobBuyRate,
-      greenhubPobNetProfit: form.greenhubPobNetProfit,
-      greenhubPobProfitPerTransaction: form.greenhubPobProfitPerTransaction,
+      greenhubNetProfit: pobEntry ? "" : form.netProfit,
+      greenhubPobBuyRate: ccEntry ? "" : form.greenhubPobBuyRate,
+      greenhubPobNetProfit: ccEntry ? "" : form.greenhubPobNetProfit,
+      greenhubPobProfitPerTransaction: ccEntry ? "" : form.greenhubPobProfitPerTransaction,
       merchantNotes: form.merchantNotes,
       merchantAccountId: form.merchantAccountId,
-      monthlySalesVolume: form.monthlySalesVolume,
+      monthlySalesVolume: pobEntry ? "" : form.monthlySalesVolume,
       oneTimeFees: form.oneTimeFees,
       platformId: form.platformId,
-      profitPerTransaction: form.profitPerTransaction,
-      rebate: form.rebate,
+      profitPerTransaction: ccEntry ? "" : form.profitPerTransaction,
+      rebate: ccEntry ? "" : form.rebate,
       residualMonth: months.indexOf(form.month) + 1,
       residualStatus: nextStatus,
       residualYear: form.year,
-      surcharge: form.surcharge,
-      transactionsPerMonth: form.transactionsPerMonth,
+      surcharge: ccEntry ? "" : form.surcharge,
+      transactionsPerMonth: ccEntry ? "" : form.transactionsPerMonth,
     };
   }
 
@@ -487,6 +514,11 @@ function AdminResidualsContent() {
         platform: platformNames.get(residual.platform_id ?? "") ?? "Unassigned",
         profitPerTransaction: amount(residual.profit_per_transaction),
         rebate: amount(residual.rebate),
+        residualType: inferredResidualPlatformType(
+          data.platforms.find((platform) => platform.id === residual.platform_id) ??
+            platformNames.get(residual.platform_id ?? "") ??
+            "Unassigned"
+        ),
         salesVolume: amount(residual.monthly_sales_volume),
         status: residual.residual_status,
         surcharge: amount(residual.surcharge),
@@ -505,12 +537,16 @@ function AdminResidualsContent() {
       (reportMonth === "all" || row.monthValue === reportMonth) &&
       (reportStatus === "all" || row.status === reportStatus)
   );
-  const totalRows = filteredReportRows.length;
+  const visibleReportRows =
+    reportView === "total"
+      ? filteredReportRows
+      : filteredReportRows.filter((row) => row.residualType === reportView);
+  const totalRows = visibleReportRows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / residualsPerPage));
   const activePage = Math.min(recentPage, pageCount);
   const pageOffset = (activePage - 1) * residualsPerPage;
-  const paginatedReportRows = filteredReportRows.slice(pageOffset, pageOffset + residualsPerPage);
-  const reportTotals = totalResiduals(filteredReportRows);
+  const paginatedReportRows = visibleReportRows.slice(pageOffset, pageOffset + residualsPerPage);
+  const reportTotals = totalResiduals(visibleReportRows);
 
   return (
     <>
@@ -625,27 +661,39 @@ function AdminResidualsContent() {
               { label: "Finalized", value: "finalized" },
             ]}
           />
-          <ResidualInput label="GreenHub POB Buy Rate" field="greenhubPobBuyRate" form={form} updateForm={updateForm} />
+          {showPobFields ? (
+            <ResidualInput label="GreenHub POB Buy Rate" field="greenhubPobBuyRate" form={form} updateForm={updateForm} />
+          ) : null}
           <input
             className={portalInputClass}
             placeholder="Agent Commission Structure"
             value={form.agentCommissionStructure}
             onChange={(event) => updateForm("agentCommissionStructure", event.target.value)}
           />
-          <ResidualInput label="Monthly Sales Volume" field="monthlySalesVolume" form={form} updateForm={updateForm} />
-          <ResidualInput label="GreenHub Net Profit" field="netProfit" form={form} updateForm={updateForm} />
-          <ResidualInput label="Surcharge" field="surcharge" form={form} updateForm={updateForm} />
-          <ResidualInput label="Rebate to Merchant" field="rebate" form={form} updateForm={updateForm} />
-          <ResidualInput label="Agent Profit Per Transaction" field="profitPerTransaction" form={form} updateForm={updateForm} />
-          <ResidualInput
-            label="GreenHub POB Profit Per Transaction"
-            field="greenhubPobProfitPerTransaction"
-            form={form}
-            updateForm={updateForm}
-          />
-          <ResidualInput label="Transactions Per Month" field="transactionsPerMonth" form={form} updateForm={updateForm} />
+          {showCcFields ? (
+            <>
+              <ResidualInput label="Monthly Sales Volume" field="monthlySalesVolume" form={form} updateForm={updateForm} />
+              <ResidualInput label="GreenHub Net Profit" field="netProfit" form={form} updateForm={updateForm} />
+            </>
+          ) : null}
+          {showPobFields ? (
+            <>
+              <ResidualInput label="Surcharge" field="surcharge" form={form} updateForm={updateForm} />
+              <ResidualInput label="Rebate to Merchant" field="rebate" form={form} updateForm={updateForm} />
+              <ResidualInput label="Agent Profit Per Transaction" field="profitPerTransaction" form={form} updateForm={updateForm} />
+              <ResidualInput
+                label="GreenHub POB Profit Per Transaction"
+                field="greenhubPobProfitPerTransaction"
+                form={form}
+                updateForm={updateForm}
+              />
+              <ResidualInput label="Transactions Per Month" field="transactionsPerMonth" form={form} updateForm={updateForm} />
+            </>
+          ) : null}
           <ResidualInput label="Agent Profit" field="agentProfit" form={form} updateForm={updateForm} />
-          <ResidualInput label="GreenHub POB Net Profit" field="greenhubPobNetProfit" form={form} updateForm={updateForm} />
+          {showPobFields ? (
+            <ResidualInput label="GreenHub POB Net Profit" field="greenhubPobNetProfit" form={form} updateForm={updateForm} />
+          ) : null}
           <ResidualInput label="Equipment Cost" field="equipmentCost" form={form} updateForm={updateForm} />
           <textarea
             className={`${portalInputClass} md:col-span-3`}
@@ -759,7 +807,10 @@ function AdminResidualsContent() {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setReportView(id)}
+                  onClick={() => {
+                    setReportView(id);
+                    setRecentPage(1);
+                  }}
                   className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
                     active
                       ? "border-emerald-800 bg-emerald-900 text-white"
@@ -881,12 +932,16 @@ function TotalTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function combinedGreenHubResidual(row: ResidualReportRow) {
-  return row.greenhubNetProfit + row.greenhubPobNetProfit;
-}
-
 function agentNetResidual(row: ResidualReportRow) {
   return row.agentProfit - row.equipmentCost;
+}
+
+function pobAgentResidual(row: ResidualReportRow) {
+  return row.residualType === "pob" ? row.agentProfit : 0;
+}
+
+function ccAgentResidual(row: ResidualReportRow) {
+  return row.residualType === "cc" ? row.agentProfit : 0;
 }
 
 function ResidualSummary({
@@ -912,7 +967,8 @@ function ResidualSummary({
             { label: "Equipment Cost", value: currency(totals.equipmentCost) },
           ]
         : [
-            { label: "Total GreenHub Residual", value: currency(totals.totalGreenHubResidual) },
+            { label: "POB Agent Residual", value: currency(totals.pobAgentResidual) },
+            { label: "CC Agent Residual", value: currency(totals.ccAgentResidual) },
             { label: "Total Agent Residual", value: currency(totals.agentProfit) },
             { label: "Total Equipment Cost", value: currency(totals.equipmentCost) },
             { label: "Agent Net Residual", value: currency(totals.agentNetResidual) },
@@ -1024,17 +1080,16 @@ function ResidualReportTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1280px] text-left text-xs text-slate-900">
+      <table className="w-full min-w-[1180px] text-left text-xs text-slate-900">
         <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
           <tr>
             <th className="p-4">Merchant</th>
             <th className="px-3 py-3">Agent</th>
             <th className="px-3 py-3">Platform</th>
             <th className="px-3 py-3">Status</th>
-            <th className="px-3 py-3 text-right">CC Residual</th>
-            <th className="px-3 py-3 text-right">POB Residual</th>
-            <th className="px-3 py-3 text-right">Total GreenHub Residual</th>
-            <th className="px-3 py-3 text-right">Agent Residual</th>
+            <th className="px-3 py-3 text-right">CC Agent Residual</th>
+            <th className="px-3 py-3 text-right">POB Agent Residual</th>
+            <th className="px-3 py-3 text-right">Total Agent Residual</th>
             <th className="px-3 py-3 text-right">Equipment Cost</th>
             <th className="px-3 py-3 text-right">Agent Net Residual</th>
             <th className="px-3 py-3">Merchant Notes</th>
@@ -1047,16 +1102,15 @@ function ResidualReportTable({
               <td className="px-3 py-3">{row.agent}</td>
               <td className="px-3 py-3">{row.platform}</td>
               <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-              <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubNetProfit)}</td>
-              <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobNetProfit)}</td>
-              <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(combinedGreenHubResidual(row))}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{currency(ccAgentResidual(row))}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{currency(pobAgentResidual(row))}</td>
               <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
               <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
               <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(agentNetResidual(row))}</td>
               <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
             </tr>
           ))}
-          <ResidualEmptyRow colSpan={11} rows={rows} />
+          <ResidualEmptyRow colSpan={10} rows={rows} />
         </tbody>
       </table>
     </div>
@@ -1088,19 +1142,21 @@ function totalResiduals(rows: ResidualReportRow[]) {
       equipmentCost: totals.equipmentCost + row.equipmentCost,
       greenhubNetProfit: totals.greenhubNetProfit + row.greenhubNetProfit,
       greenhubPobNetProfit: totals.greenhubPobNetProfit + row.greenhubPobNetProfit,
+      ccAgentResidual: totals.ccAgentResidual + ccAgentResidual(row),
+      pobAgentResidual: totals.pobAgentResidual + pobAgentResidual(row),
       salesVolume: totals.salesVolume + row.salesVolume,
-      totalGreenHubResidual: totals.totalGreenHubResidual + combinedGreenHubResidual(row),
       transactionsPerMonth: totals.transactionsPerMonth + row.transactionsPerMonth,
     }),
     {
       agentProfit: 0,
       agentNetResidual: 0,
       averagePobProfitPerTransaction: 0,
+      ccAgentResidual: 0,
       equipmentCost: 0,
       greenhubNetProfit: 0,
       greenhubPobNetProfit: 0,
+      pobAgentResidual: 0,
       salesVolume: 0,
-      totalGreenHubResidual: 0,
       transactionsPerMonth: 0,
     }
   );
@@ -1153,6 +1209,7 @@ function demoReportRow(row: DemoResidualRow): ResidualReportRow {
     platform: row.platform,
     profitPerTransaction: amount(row.profitPerTransaction),
     rebate: amount(row.rebate),
+    residualType: inferredResidualPlatformType(row.platform),
     salesVolume: amount(row.volume),
     status: row.status.toLowerCase() as "draft" | "finalized",
     surcharge: amount(row.surcharge),
