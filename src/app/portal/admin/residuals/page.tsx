@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronDown, CreditCard, FileText, Layers3, ReceiptText, Trash2 } from "lucide-react";
+import { Bell, ChevronDown, CreditCard, FileText, Layers3, Lock, ReceiptText, Trash2, Unlock, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
@@ -9,8 +9,9 @@ import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/P
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
 import { portalRequest } from "@/lib/portal/client";
+import { parseResidualImportFile, type ParsedResidualImport, type ParsedResidualImportRow } from "@/lib/portal/residualImport";
 import { inferredResidualPlatformType, type ResidualPlatformType } from "@/lib/portal/residualType";
-import type { MonthlyResidual } from "@/lib/portal/types";
+import type { MerchantAccount, MonthlyResidual, Platform } from "@/lib/portal/types";
 
 const months = [
   "January",
@@ -110,6 +111,15 @@ type ResidualReportRow = {
   status: "draft" | "finalized";
   surcharge: number;
   transactionsPerMonth: number;
+};
+
+type ResidualImportPreviewRow = ParsedResidualImportRow & {
+  account: MerchantAccount | null;
+  agentName: string;
+  platform: Platform | null;
+  ready: boolean;
+  residualType: ResidualPlatformType;
+  warnings: string[];
 };
 
 const initialForm: ResidualForm = {
@@ -212,6 +222,42 @@ function currency(value: number | string | null | undefined) {
   }).format(amount(value));
 }
 
+function inputAmount(value: number) {
+  return value ? Number(value.toFixed(2)).toString() : "";
+}
+
+function normalizedLookupName(value: string | null | undefined) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function withPobCalculations(form: ResidualForm) {
+  const transactions = amount(form.transactionsPerMonth);
+  const agentProfitPerTransaction = amount(form.profitPerTransaction);
+  const greenhubPobProfitPerTransaction = amount(form.greenhubPobProfitPerTransaction);
+
+  return {
+    ...form,
+    agentProfit:
+      transactions && agentProfitPerTransaction
+        ? inputAmount(transactions * agentProfitPerTransaction)
+        : form.agentProfit,
+    greenhubPobNetProfit:
+      transactions && greenhubPobProfitPerTransaction
+        ? inputAmount(transactions * greenhubPobProfitPerTransaction)
+        : form.greenhubPobNetProfit,
+  };
+}
+
+function calculatedPobField(field: keyof ResidualForm) {
+  return field === "transactionsPerMonth" ||
+    field === "profitPerTransaction" ||
+    field === "greenhubPobProfitPerTransaction";
+}
+
 function savedAt(value: string) {
   return `Saved ${new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -242,6 +288,13 @@ function AdminResidualsContent() {
   const [reportStatus, setReportStatus] = useState("all");
   const [reportView, setReportView] = useState<ResidualReportView>("total");
   const [recentPage, setRecentPage] = useState(1);
+  const [pobFieldsLocked, setPobFieldsLocked] = useState(true);
+  const [importMonth, setImportMonth] = useState("July");
+  const [importYear, setImportYear] = useState("2026");
+  const [importPlatformId, setImportPlatformId] = useState("");
+  const [importStatus, setImportStatus] = useState<ResidualForm["status"]>("draft");
+  const [parsedImport, setParsedImport] = useState<ParsedResidualImport | null>(null);
+  const [importing, setImporting] = useState(false);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
 
   const accountOptions = data
@@ -266,6 +319,48 @@ function AdminResidualsContent() {
     () => new Map(data?.platforms.map((platform) => [platform.id, platform.name]) ?? []),
     [data?.platforms]
   );
+  const normalizedAccounts = useMemo(
+    () =>
+      data?.accounts.map((account) => ({
+        account,
+        name: normalizedLookupName(account.account_name),
+      })) ?? [],
+    [data?.accounts]
+  );
+  const importPreviewRows = useMemo<ResidualImportPreviewRow[]>(() => {
+    if (!parsedImport) return [];
+
+    return parsedImport.rows.map((row) => {
+      const normalizedMerchant = normalizedLookupName(row.merchantName);
+      const accountMatch =
+        normalizedAccounts.find((item) => item.name === normalizedMerchant)?.account ??
+        normalizedAccounts.find(
+          (item) => item.name.includes(normalizedMerchant) || normalizedMerchant.includes(item.name)
+        )?.account ??
+        null;
+      const platform =
+        data?.platforms.find((item) => item.id === (importPlatformId || accountMatch?.platform_id || "")) ??
+        null;
+      const agentName = agentNames.get(accountMatch?.assigned_agent_id ?? "") ?? "";
+      const residualType = inferredResidualPlatformType(platform ?? "");
+      const warnings = [
+        accountMatch ? "" : "No matching account",
+        accountMatch?.assigned_agent_id ? "" : "No assigned agent",
+        platform ? "" : "No platform",
+      ].filter(Boolean);
+
+      return {
+        ...row,
+        account: accountMatch,
+        agentName,
+        platform,
+        ready: warnings.length === 0,
+        residualType,
+        warnings,
+      };
+    });
+  }, [agentNames, data?.platforms, importPlatformId, normalizedAccounts, parsedImport]);
+  const readyImportRows = importPreviewRows.filter((row) => row.ready);
   const selectedAccount = data?.accounts.find((account) => account.id === form.merchantAccountId);
   const effectivePlatformId = form.platformId || selectedAccount?.platform_id || "";
   const selectedPlatformName =
@@ -329,7 +424,10 @@ function AdminResidualsContent() {
 
   function updateForm(field: keyof ResidualForm, value: string) {
     setForm((current) => {
-      if (field !== "merchantAccountId") return { ...current, [field]: value };
+      if (field !== "merchantAccountId") {
+        const next = { ...current, [field]: value };
+        return calculatedPobField(field) ? withPobCalculations(next) : next;
+      }
 
       const account = data?.accounts.find((item) => item.id === value);
       return {
@@ -339,6 +437,85 @@ function AdminResidualsContent() {
         platformId: account ? account.platform_id ?? "" : current.platformId,
       };
     });
+  }
+
+  async function parseImport(file: File) {
+    setError(null);
+
+    try {
+      const parsed = await parseResidualImportFile(file);
+      setParsedImport(parsed);
+      if (parsed.warnings.length) setError(parsed.warnings.join(" "));
+    } catch (parseError) {
+      setParsedImport(null);
+      setError(parseError instanceof Error ? parseError.message : "The residual import file could not be read.");
+    }
+  }
+
+  function importPayload(row: ResidualImportPreviewRow) {
+    const platformType = row.residualType;
+    const pobEntry = platformType === "pob";
+    const ccEntry = platformType === "cc";
+
+    return {
+      agentCommissionStructure: row.agentCommissionStructure || row.account?.commission_structure || "",
+      agentId: row.account?.assigned_agent_id ?? "",
+      agentProfit: row.agentProfit,
+      equipmentCost: row.equipmentCost,
+      greenhubNetProfit: pobEntry ? "" : row.greenhubNetProfit,
+      greenhubPobBuyRate: ccEntry ? "" : row.greenhubPobBuyRate,
+      greenhubPobNetProfit: ccEntry ? "" : row.greenhubPobNetProfit,
+      greenhubPobProfitPerTransaction: ccEntry ? "" : row.greenhubPobProfitPerTransaction,
+      merchantNotes: row.merchantNotes,
+      merchantAccountId: row.account?.id ?? "",
+      monthlySalesVolume: pobEntry ? "" : row.monthlySalesVolume,
+      oneTimeFees: "",
+      platformId: row.platform?.id ?? "",
+      profitPerTransaction: ccEntry ? "" : row.profitPerTransaction,
+      rebate: ccEntry ? "" : row.rebate,
+      residualMonth: months.indexOf(importMonth) + 1,
+      residualStatus: importStatus,
+      residualYear: importYear,
+      surcharge: ccEntry ? "" : row.surcharge,
+      transactionsPerMonth: ccEntry ? "" : row.transactionsPerMonth,
+    };
+  }
+
+  async function importResidualRows() {
+    if (!data) {
+      setError("Sign in is required before importing residuals.");
+      return;
+    }
+
+    if (!readyImportRows.length) {
+      setError("No matched residual rows are ready to import.");
+      return;
+    }
+
+    setImporting(true);
+    setError(null);
+
+    try {
+      const result = await portalRequest<{ created: number; imported: number; updated: number }>(
+        "/api/portal/residuals/import",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            entries: readyImportRows.map((row) => importPayload(row)),
+            source: parsedImport?.fileName ?? "monthly residual import",
+          }),
+        }
+      );
+      await refresh();
+      showPortalToast({
+        title: "Residual import complete",
+        message: `${result.imported} rows imported. ${result.updated} updated, ${result.created} created.`,
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The residual import could not be saved.");
+    } finally {
+      setImporting(false);
+    }
   }
 
   function apiPayload(nextStatus: ResidualForm["status"]) {
@@ -555,6 +732,143 @@ function AdminResidualsContent() {
         subtitle="Enter monthly sales volume, net profit, costs, and agent residuals."
       />
 
+      <section className="mb-6 rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+              <UploadCloud aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Import Monthly Residual Report</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-700">
+                Upload a CSV or XLSX report, map it to existing merchant accounts, then import the matched rows into the selected month.
+              </p>
+            </div>
+          </div>
+          {parsedImport ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+              {readyImportRows.length} of {importPreviewRows.length} rows ready
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[170px_140px_minmax(220px,1fr)_150px_minmax(220px,1.2fr)]">
+          <PortalSelect
+            ariaLabel="Import month"
+            value={importMonth}
+            onValueChange={setImportMonth}
+            options={months.map((month) => ({ label: month, value: month }))}
+          />
+          <input
+            className={portalInputClass}
+            placeholder="Year"
+            value={importYear}
+            onChange={(event) => setImportYear(event.target.value)}
+          />
+          <PortalSelect
+            ariaLabel="Import fallback platform"
+            value={importPlatformId}
+            onValueChange={setImportPlatformId}
+            options={[
+              { label: "Use account platform", value: "" },
+              ...platformOptions.filter((option) => option.value),
+            ]}
+          />
+          <PortalSelect
+            ariaLabel="Import residual status"
+            value={importStatus}
+            onValueChange={(status) => setImportStatus(status as ResidualForm["status"])}
+            options={[
+              { label: "Draft", value: "draft" },
+              { label: "Finalized", value: "finalized" },
+            ]}
+          />
+          <label className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100">
+            <span className="truncate">{parsedImport?.fileName ?? "Choose CSV or XLSX file"}</span>
+            <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600">Browse</span>
+            <input
+              type="file"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void parseImport(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        </div>
+
+        {parsedImport ? (
+          <div className="mt-5 overflow-hidden rounded-lg border border-slate-300">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-300 bg-slate-50 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">
+                  Import preview: {parsedImport.sheetName}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Matching is based on merchant account names already saved in the portal.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={importing || !readyImportRows.length}
+                onClick={() => void importResidualRows()}
+                className="rounded-xl bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {importing ? "Importing..." : `Import ${readyImportRows.length} matched rows`}
+              </button>
+            </div>
+            <div className="max-h-80 overflow-auto">
+              <table className="w-full min-w-[980px] text-left text-xs text-slate-900">
+                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
+                  <tr>
+                    <th className="p-3">Merchant from file</th>
+                    <th className="px-3 py-3">Matched account</th>
+                    <th className="px-3 py-3">Agent</th>
+                    <th className="px-3 py-3">Platform</th>
+                    <th className="px-3 py-3 text-right">Transactions</th>
+                    <th className="px-3 py-3 text-right">Agent residual</th>
+                    <th className="px-3 py-3 text-right">GreenHub POB net</th>
+                    <th className="px-3 py-3">Import status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreviewRows.slice(0, 80).map((row) => (
+                    <tr key={`${row.sourceIndex}-${row.merchantName}`} className="border-t border-slate-200">
+                      <td className="p-3 font-semibold text-slate-950">{row.merchantName}</td>
+                      <td className="px-3 py-3">{row.account?.account_name ?? "-"}</td>
+                      <td className="px-3 py-3">{row.agentName || "-"}</td>
+                      <td className="px-3 py-3">
+                        {row.platform ? `${row.platform.name} (${row.residualType.toUpperCase()})` : "-"}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">{row.transactionsPerMonth || "-"}</td>
+                      <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                        {row.agentProfit ? currency(row.agentProfit) : "-"}
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                        {row.greenhubPobNetProfit ? currency(row.greenhubPobNetProfit) : "-"}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                            row.ready
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {row.ready ? "Ready" : row.warnings.join(", ")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <section className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -662,7 +976,34 @@ function AdminResidualsContent() {
             ]}
           />
           {showPobFields ? (
-            <ResidualInput label="GreenHub POB Buy Rate" field="greenhubPobBuyRate" form={form} updateForm={updateForm} />
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 md:col-span-3">
+              <div className="flex items-center gap-2 text-sm text-slate-700">
+                {pobFieldsLocked ? (
+                  <Lock aria-hidden="true" className="h-4 w-4 text-slate-600" />
+                ) : (
+                  <Unlock aria-hidden="true" className="h-4 w-4 text-slate-600" />
+                )}
+                <span>
+                  POB rate fields are {pobFieldsLocked ? "locked" : "unlocked"}. Transaction counts stay editable and recalculate residual totals.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPobFieldsLocked((locked) => !locked)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              >
+                {pobFieldsLocked ? "Unlock fields" : "Lock fields"}
+              </button>
+            </div>
+          ) : null}
+          {showPobFields ? (
+            <ResidualInput
+              label="GreenHub POB Buy Rate"
+              field="greenhubPobBuyRate"
+              form={form}
+              updateForm={updateForm}
+              disabled={pobFieldsLocked && residualEntryType === "pob"}
+            />
           ) : null}
           <input
             className={portalInputClass}
@@ -678,21 +1019,52 @@ function AdminResidualsContent() {
           ) : null}
           {showPobFields ? (
             <>
-              <ResidualInput label="Surcharge" field="surcharge" form={form} updateForm={updateForm} />
-              <ResidualInput label="Rebate to Merchant" field="rebate" form={form} updateForm={updateForm} />
-              <ResidualInput label="Agent Profit Per Transaction" field="profitPerTransaction" form={form} updateForm={updateForm} />
+              <ResidualInput
+                label="Surcharge"
+                field="surcharge"
+                form={form}
+                updateForm={updateForm}
+                disabled={pobFieldsLocked && residualEntryType === "pob"}
+              />
+              <ResidualInput
+                label="Rebate to Merchant"
+                field="rebate"
+                form={form}
+                updateForm={updateForm}
+                disabled={pobFieldsLocked && residualEntryType === "pob"}
+              />
+              <ResidualInput
+                label="Agent Profit Per Transaction"
+                field="profitPerTransaction"
+                form={form}
+                updateForm={updateForm}
+                disabled={pobFieldsLocked && residualEntryType === "pob"}
+              />
               <ResidualInput
                 label="GreenHub POB Profit Per Transaction"
                 field="greenhubPobProfitPerTransaction"
                 form={form}
                 updateForm={updateForm}
+                disabled={pobFieldsLocked && residualEntryType === "pob"}
               />
               <ResidualInput label="Transactions Per Month" field="transactionsPerMonth" form={form} updateForm={updateForm} />
             </>
           ) : null}
-          <ResidualInput label="Agent Profit" field="agentProfit" form={form} updateForm={updateForm} />
+          <ResidualInput
+            label="Agent Profit"
+            field="agentProfit"
+            form={form}
+            updateForm={updateForm}
+            disabled={pobFieldsLocked && residualEntryType === "pob"}
+          />
           {showPobFields ? (
-            <ResidualInput label="GreenHub POB Net Profit" field="greenhubPobNetProfit" form={form} updateForm={updateForm} />
+            <ResidualInput
+              label="GreenHub POB Net Profit"
+              field="greenhubPobNetProfit"
+              form={form}
+              updateForm={updateForm}
+              disabled={pobFieldsLocked && residualEntryType === "pob"}
+            />
           ) : null}
           <ResidualInput label="Equipment Cost" field="equipmentCost" form={form} updateForm={updateForm} />
           <textarea
@@ -875,11 +1247,13 @@ function formFromResidual(residual: MonthlyResidual): ResidualForm {
 }
 
 function ResidualInput({
+  disabled = false,
   field,
   form,
   label,
   updateForm,
 }: {
+  disabled?: boolean;
   field: keyof Pick<
     ResidualForm,
     | "agentProfit"
@@ -901,7 +1275,8 @@ function ResidualInput({
 }) {
   return (
     <input
-      className={portalInputClass}
+      className={`${portalInputClass} disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none`}
+      disabled={disabled}
       placeholder={label}
       value={form[field]}
       onChange={(event) => updateForm(field, event.target.value)}
