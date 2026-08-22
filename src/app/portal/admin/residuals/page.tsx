@@ -29,6 +29,7 @@ const months = [
 ];
 
 const residualsPerPage = 10;
+const defaultReportMonth = "2026-7";
 
 type ResidualReportView = "pob" | "cc" | "total";
 
@@ -73,6 +74,7 @@ type ResidualForm = {
   netProfit: string;
   oneTimeFees: string;
   platformId: string;
+  posIntegrationFee: string;
   profitPerTransaction: string;
   rebate: string;
   status: "draft" | "finalized";
@@ -107,6 +109,7 @@ type ResidualReportRow = {
   monthValue: string;
   platform: string;
   platformId: string;
+  posIntegrationFee: number;
   profitPerTransaction: number;
   rebate: number;
   residualId: string | null;
@@ -120,6 +123,7 @@ type ResidualReportRow = {
 type ResidualImportPreviewRow = ParsedResidualImportRow & {
   account: MerchantAccount | null;
   agentName: string;
+  baselineResidual: MonthlyResidual | null;
   platform: Platform | null;
   ready: boolean;
   residualType: ResidualPlatformType;
@@ -141,6 +145,7 @@ const initialForm: ResidualForm = {
   netProfit: "",
   oneTimeFees: "",
   platformId: "",
+  posIntegrationFee: "",
   profitPerTransaction: "",
   rebate: "",
   status: "draft",
@@ -169,6 +174,7 @@ const demoDrafts: DraftEntry[] = [
       netProfit: "$2,041.56",
       oneTimeFees: "$0",
       platformId: "Best Rate – Nuvei",
+      posIntegrationFee: "$0.00",
       profitPerTransaction: "$3.74",
       rebate: "$0",
       status: "draft",
@@ -196,6 +202,7 @@ const demoDrafts: DraftEntry[] = [
       netProfit: "$1,066.15",
       oneTimeFees: "$49.00",
       platformId: "ElitePay – Adyen",
+      posIntegrationFee: "$0.00",
       profitPerTransaction: "$2.91",
       rebate: "$35.00",
       status: "draft",
@@ -230,6 +237,10 @@ function inputAmount(value: number) {
   return value ? Number(value.toFixed(2)).toString() : "";
 }
 
+function rowInputAmount(value: number) {
+  return value ? inputValue(value) : "";
+}
+
 function normalizedLookupName(value: string | null | undefined) {
   return String(value ?? "")
     .toLowerCase()
@@ -242,7 +253,10 @@ function withPobCalculations(form: ResidualForm, changedField?: keyof ResidualFo
   const transactions = amount(form.transactionsPerMonth);
   const agentProfitPerTransaction = amount(form.profitPerTransaction);
   const grossPobProfitPerTransaction =
-    amount(form.surcharge) - amount(form.greenhubPobBuyRate) - amount(form.rebate);
+    amount(form.surcharge) -
+    amount(form.greenhubPobBuyRate) -
+    amount(form.rebate) -
+    amount(form.posIntegrationFee);
   const calculatedGreenhubPobProfitPerTransaction =
     grossPobProfitPerTransaction || agentProfitPerTransaction
       ? grossPobProfitPerTransaction - agentProfitPerTransaction
@@ -275,9 +289,43 @@ function calculatedPobField(field: keyof ResidualForm) {
   return field === "transactionsPerMonth" ||
     field === "greenhubPobBuyRate" ||
     field === "profitPerTransaction" ||
+    field === "posIntegrationFee" ||
     field === "rebate" ||
     field === "surcharge" ||
     field === "greenhubPobProfitPerTransaction";
+}
+
+function buildResidualPayload(
+  entry: ResidualForm,
+  entryType: ResidualPlatformType,
+  nextStatus: ResidualForm["status"]
+) {
+  const pobEntry = entryType === "pob";
+  const ccEntry = entryType === "cc";
+
+  return {
+    agentCommissionStructure: entry.agentCommissionStructure,
+    agentId: entry.agentId,
+    agentProfit: entry.agentProfit,
+    equipmentCost: entry.equipmentCost,
+    greenhubNetProfit: pobEntry ? "" : entry.netProfit,
+    greenhubPobBuyRate: ccEntry ? "" : entry.greenhubPobBuyRate,
+    greenhubPobNetProfit: ccEntry ? "" : entry.greenhubPobNetProfit,
+    greenhubPobProfitPerTransaction: ccEntry ? "" : entry.greenhubPobProfitPerTransaction,
+    merchantNotes: entry.merchantNotes,
+    merchantAccountId: entry.merchantAccountId,
+    monthlySalesVolume: pobEntry ? "" : entry.monthlySalesVolume,
+    oneTimeFees: entry.oneTimeFees,
+    platformId: entry.platformId,
+    posIntegrationFee: ccEntry ? "" : entry.posIntegrationFee,
+    profitPerTransaction: ccEntry ? "" : entry.profitPerTransaction,
+    rebate: ccEntry ? "" : entry.rebate,
+    residualMonth: months.indexOf(entry.month) + 1,
+    residualStatus: nextStatus,
+    residualYear: entry.year,
+    surcharge: ccEntry ? "" : entry.surcharge,
+    transactionsPerMonth: ccEntry ? "" : entry.transactionsPerMonth,
+  };
 }
 
 function reportMonthLabel(value: string) {
@@ -308,6 +356,18 @@ function residualKey(accountId: string, platformId: string | null | undefined, m
   return `${accountId}::${platformId ?? ""}::${monthValue}`;
 }
 
+function residualBaseKey(accountId: string, platformId: string | null | undefined) {
+  return `${accountId}::${platformId ?? ""}`;
+}
+
+function residualPeriodScore(residual: MonthlyResidual) {
+  return residual.residual_year * 100 + residual.residual_month;
+}
+
+function reportRowEditKey(row: ResidualReportRow) {
+  return residualKey(row.merchantAccountId, row.platformId, row.monthValue);
+}
+
 function savedAt(value: string) {
   return `Saved ${new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -334,9 +394,9 @@ function AdminResidualsContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportAgent, setReportAgent] = useState("all");
-  const [reportMonth, setReportMonth] = useState("all");
+  const [reportMonth, setReportMonth] = useState(defaultReportMonth);
   const [reportStatus, setReportStatus] = useState("all");
-  const [reportView, setReportView] = useState<ResidualReportView>("total");
+  const [reportView, setReportView] = useState<ResidualReportView>("pob");
   const [recentPage, setRecentPage] = useState(1);
   const [pobFieldsLocked, setPobFieldsLocked] = useState(true);
   const [importMonth, setImportMonth] = useState("July");
@@ -345,6 +405,8 @@ function AdminResidualsContent() {
   const [importStatus, setImportStatus] = useState<ResidualForm["status"]>("draft");
   const [parsedImport, setParsedImport] = useState<ParsedResidualImport | null>(null);
   const [importing, setImporting] = useState(false);
+  const [rowEdits, setRowEdits] = useState<Record<string, ResidualForm>>({});
+  const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
   const residualFormRef = useRef<HTMLElement>(null);
 
@@ -378,6 +440,23 @@ function AdminResidualsContent() {
       })) ?? [],
     [data?.accounts]
   );
+  const residualBaselinesByAccountPlatform = useMemo(() => {
+    const rows = new Map<string, MonthlyResidual>();
+
+    data?.residuals.forEach((residual) => {
+      const platformKey = residualBaseKey(residual.merchant_account_id, residual.platform_id);
+      const accountKey = residualBaseKey(residual.merchant_account_id, "");
+
+      [platformKey, accountKey].forEach((key) => {
+        const current = rows.get(key);
+        if (!current || residualPeriodScore(residual) >= residualPeriodScore(current)) {
+          rows.set(key, residual);
+        }
+      });
+    });
+
+    return rows;
+  }, [data?.residuals]);
   const importPreviewRows = useMemo<ResidualImportPreviewRow[]>(() => {
     if (!parsedImport) return [];
 
@@ -394,6 +473,11 @@ function AdminResidualsContent() {
         null;
       const agentName = agentNames.get(accountMatch?.assigned_agent_id ?? "") ?? "";
       const residualType = inferredResidualPlatformType(platform ?? "");
+      const baselineResidual = accountMatch
+        ? residualBaselinesByAccountPlatform.get(residualBaseKey(accountMatch.id, platform?.id ?? "")) ??
+          residualBaselinesByAccountPlatform.get(residualBaseKey(accountMatch.id, "")) ??
+          null
+        : null;
       const warnings = [
         accountMatch ? "" : "No matching account",
         accountMatch?.assigned_agent_id ? "" : "No assigned agent",
@@ -404,13 +488,21 @@ function AdminResidualsContent() {
         ...row,
         account: accountMatch,
         agentName,
+        baselineResidual,
         platform,
         ready: warnings.length === 0,
         residualType,
         warnings,
       };
     });
-  }, [agentNames, data?.platforms, importPlatformId, normalizedAccounts, parsedImport]);
+  }, [
+    agentNames,
+    data?.platforms,
+    importPlatformId,
+    normalizedAccounts,
+    parsedImport,
+    residualBaselinesByAccountPlatform,
+  ]);
   const readyImportRows = importPreviewRows.filter((row) => row.ready);
   const selectedAccount = data?.accounts.find((account) => account.id === form.merchantAccountId);
   const effectivePlatformId = form.platformId || selectedAccount?.platform_id || "";
@@ -419,9 +511,9 @@ function AdminResidualsContent() {
     platformNames.get(effectivePlatformId) ||
     effectivePlatformId;
   const selectedPlatformRecord = data?.platforms.find((platform) => platform.id === effectivePlatformId);
-  const residualEntryType = effectivePlatformId
+  const residualEntryType: ResidualPlatformType = effectivePlatformId
     ? inferredResidualPlatformType(selectedPlatformRecord ?? selectedPlatformName)
-    : "all";
+    : "cc";
   const showPobFields = residualEntryType !== "cc";
   const showCcFields = residualEntryType !== "pob";
   const reportMonthOptions = useMemo(() => {
@@ -482,6 +574,11 @@ function AdminResidualsContent() {
     };
   }, [draftsOpen]);
 
+  useEffect(() => {
+    const importMonthValue = `${importYear}-${months.indexOf(importMonth) + 1}`;
+    setReportMonth((current) => (current === "all" ? importMonthValue : current));
+  }, [importMonth, importYear]);
+
   function updateForm(field: keyof ResidualForm, value: string) {
     setForm((current) => {
       if (field !== "merchantAccountId") {
@@ -525,29 +622,41 @@ function AdminResidualsContent() {
     const platformType = row.residualType;
     const pobEntry = platformType === "pob";
     const ccEntry = platformType === "cc";
-
-    return {
-      agentCommissionStructure: row.agentCommissionStructure || row.account?.commission_structure || "",
+    const baseline = row.baselineResidual;
+    const importedOrBaseline = (importedValue: string, baselineValue: number | string | null | undefined) =>
+      importedValue || rowInputAmount(amount(baselineValue));
+    const entry = withPobCalculations({
+      ...initialForm,
+      agentCommissionStructure:
+        row.agentCommissionStructure ||
+        baseline?.agent_commission_structure ||
+        row.account?.commission_structure ||
+        "",
       agentId: row.account?.assigned_agent_id ?? "",
-      agentProfit: row.agentProfit,
-      equipmentCost: row.equipmentCost,
-      greenhubNetProfit: pobEntry ? "" : row.greenhubNetProfit,
-      greenhubPobBuyRate: ccEntry ? "" : row.greenhubPobBuyRate,
-      greenhubPobNetProfit: ccEntry ? "" : row.greenhubPobNetProfit,
-      greenhubPobProfitPerTransaction: ccEntry ? "" : row.greenhubPobProfitPerTransaction,
-      merchantNotes: row.merchantNotes,
+      agentProfit: row.agentProfit || rowInputAmount(amount(baseline?.agent_profit)),
+      equipmentCost: row.equipmentCost || rowInputAmount(amount(baseline?.equipment_cost)),
+      greenhubPobBuyRate: importedOrBaseline(row.greenhubPobBuyRate, baseline?.greenhub_pob_buy_rate),
+      greenhubPobNetProfit: row.greenhubPobNetProfit || "",
+      greenhubPobProfitPerTransaction: importedOrBaseline(
+        row.greenhubPobProfitPerTransaction,
+        baseline?.greenhub_pob_profit_per_transaction
+      ),
+      merchantNotes: row.merchantNotes || baseline?.merchant_notes || "",
       merchantAccountId: row.account?.id ?? "",
+      month: importMonth,
       monthlySalesVolume: pobEntry ? "" : row.monthlySalesVolume,
-      oneTimeFees: "",
+      netProfit: pobEntry ? "" : row.greenhubNetProfit,
       platformId: row.platform?.id ?? "",
-      profitPerTransaction: ccEntry ? "" : row.profitPerTransaction,
-      rebate: ccEntry ? "" : row.rebate,
-      residualMonth: months.indexOf(importMonth) + 1,
-      residualStatus: importStatus,
-      residualYear: importYear,
-      surcharge: ccEntry ? "" : row.surcharge,
+      posIntegrationFee: importedOrBaseline(row.posIntegrationFee, baseline?.pos_integration_fee),
+      profitPerTransaction: importedOrBaseline(row.profitPerTransaction, baseline?.profit_per_transaction),
+      rebate: importedOrBaseline(row.rebate, baseline?.rebate),
+      status: importStatus,
+      surcharge: importedOrBaseline(row.surcharge, baseline?.surcharge),
       transactionsPerMonth: ccEntry ? "" : row.transactionsPerMonth,
-    };
+      year: importYear,
+    });
+
+    return buildResidualPayload(entry, platformType, importStatus);
   }
 
   async function importResidualRows() {
@@ -588,31 +697,7 @@ function AdminResidualsContent() {
   }
 
   function apiPayload(nextStatus: ResidualForm["status"]) {
-    const pobEntry = residualEntryType === "pob";
-    const ccEntry = residualEntryType === "cc";
-
-    return {
-      agentCommissionStructure: form.agentCommissionStructure,
-      agentId: form.agentId,
-      agentProfit: form.agentProfit,
-      equipmentCost: form.equipmentCost,
-      greenhubNetProfit: pobEntry ? "" : form.netProfit,
-      greenhubPobBuyRate: ccEntry ? "" : form.greenhubPobBuyRate,
-      greenhubPobNetProfit: ccEntry ? "" : form.greenhubPobNetProfit,
-      greenhubPobProfitPerTransaction: ccEntry ? "" : form.greenhubPobProfitPerTransaction,
-      merchantNotes: form.merchantNotes,
-      merchantAccountId: form.merchantAccountId,
-      monthlySalesVolume: pobEntry ? "" : form.monthlySalesVolume,
-      oneTimeFees: form.oneTimeFees,
-      platformId: form.platformId,
-      profitPerTransaction: ccEntry ? "" : form.profitPerTransaction,
-      rebate: ccEntry ? "" : form.rebate,
-      residualMonth: months.indexOf(form.month) + 1,
-      residualStatus: nextStatus,
-      residualYear: form.year,
-      surcharge: ccEntry ? "" : form.surcharge,
-      transactionsPerMonth: ccEntry ? "" : form.transactionsPerMonth,
-    };
+    return buildResidualPayload(form, residualEntryType, nextStatus);
   }
 
   async function persistResidual(nextStatus: ResidualForm["status"]) {
@@ -755,6 +840,7 @@ function AdminResidualsContent() {
       netProfit: value(row.greenhubNetProfit),
       oneTimeFees: "",
       platformId: row.platformId,
+      posIntegrationFee: value(row.posIntegrationFee),
       profitPerTransaction: value(row.profitPerTransaction),
       rebate: value(row.rebate),
       status: row.status,
@@ -771,6 +857,57 @@ function AdminResidualsContent() {
         ? "Update the monthly values in the entry form."
         : "Add this account's monthly residual values, then save.",
     });
+  }
+
+  function updateReportRow(row: ResidualReportRow, field: keyof ResidualForm, value: string) {
+    const key = reportRowEditKey(row);
+
+    setRowEdits((current) => {
+      const base = current[key] ?? formFromReportRow(row);
+      const next = { ...base, [field]: value };
+
+      return {
+        ...current,
+        [key]: calculatedPobField(field) ? withPobCalculations(next, field) : next,
+      };
+    });
+  }
+
+  async function saveReportRow(row: ResidualReportRow) {
+    if (!data) {
+      setError("Sign in is required before saving residual rows.");
+      return;
+    }
+
+    const key = reportRowEditKey(row);
+    const entry = withPobCalculations(rowEdits[key] ?? formFromReportRow(row));
+
+    setSavingRowKey(key);
+    setError(null);
+
+    try {
+      await portalRequest<{ residual: MonthlyResidual }>("/api/portal/residuals", {
+        method: row.residualId ? "PATCH" : "POST",
+        body: JSON.stringify({
+          ...buildResidualPayload(entry, row.residualType, entry.status),
+          ...(row.residualId ? { id: row.residualId } : {}),
+        }),
+      });
+      setRowEdits((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      await refresh();
+      showPortalToast({
+        title: "Residual row saved",
+        message: `${row.merchant} was saved for ${row.month}.`,
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The residual row could not be saved.");
+    } finally {
+      setSavingRowKey(null);
+    }
   }
 
   const selectedReportPeriod = useMemo(() => parseReportMonth(reportMonth), [reportMonth]);
@@ -817,6 +954,7 @@ function AdminResidualsContent() {
         monthValue: residualMonthValue(residual),
         platform: platformNames.get(platformId) ?? "Unassigned",
         platformId,
+        posIntegrationFee: amount(residual.pos_integration_fee),
         profitPerTransaction: amount(residual.profit_per_transaction),
         rebate: amount(residual.rebate),
         residualId: residual.id,
@@ -844,17 +982,23 @@ function AdminResidualsContent() {
 
         const platformRecord = data.platforms.find((platform) => platform.id === platformId);
         const agentId = account.assigned_agent_id ?? "";
+        const baseline =
+          residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, platformId)) ??
+          residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, ""));
 
         return {
           agent: agentNames.get(agentId) ?? "Unassigned",
-          agentCommissionStructure: account.commission_structure || "Not specified",
+          agentCommissionStructure:
+            baseline?.agent_commission_structure ||
+            account.commission_structure ||
+            "Not specified",
           agentId,
           agentProfit: 0,
-          equipmentCost: 0,
+          equipmentCost: amount(baseline?.equipment_cost),
           greenhubNetProfit: 0,
-          greenhubPobBuyRate: 0,
+          greenhubPobBuyRate: amount(baseline?.greenhub_pob_buy_rate),
           greenhubPobNetProfit: 0,
-          greenhubPobProfitPerTransaction: 0,
+          greenhubPobProfitPerTransaction: amount(baseline?.greenhub_pob_profit_per_transaction),
           hasResidual: false,
           id: `pending-${account.id}-${selectedReportPeriod.value}`,
           merchant: account.account_name,
@@ -864,13 +1008,14 @@ function AdminResidualsContent() {
           monthValue: selectedReportPeriod.value,
           platform: platformNames.get(platformId) ?? "Unassigned",
           platformId,
-          profitPerTransaction: 0,
-          rebate: 0,
+          posIntegrationFee: amount(baseline?.pos_integration_fee),
+          profitPerTransaction: amount(baseline?.profit_per_transaction),
+          rebate: amount(baseline?.rebate),
           residualId: null,
           residualType: inferredResidualPlatformType(platformRecord ?? platformNames.get(platformId) ?? "Unassigned"),
           salesVolume: 0,
           status: "draft" as const,
-          surcharge: 0,
+          surcharge: amount(baseline?.surcharge),
           transactionsPerMonth: 0,
         };
       });
@@ -880,6 +1025,7 @@ function AdminResidualsContent() {
     data,
     platformNames,
     residualsByAccountPeriod,
+    residualBaselinesByAccountPlatform,
     selectedReportPeriod,
   ]);
   const previewReportRows = useMemo(
@@ -1213,6 +1359,13 @@ function AdminResidualsContent() {
                 disabled={pobFieldsLocked && residualEntryType === "pob"}
               />
               <ResidualInput
+                label="POS Integration Fee"
+                field="posIntegrationFee"
+                form={form}
+                updateForm={updateForm}
+                disabled={pobFieldsLocked && residualEntryType === "pob"}
+              />
+              <ResidualInput
                 label="Agent Profit Per Transaction"
                 field="profitPerTransaction"
                 form={form}
@@ -1387,7 +1540,15 @@ function AdminResidualsContent() {
           </div>
         </div>
         <ResidualSummary view={reportView} totals={reportTotals} />
-        <ResidualReportTable rows={paginatedReportRows} view={reportView} onEditRow={loadReportRow} />
+        <ResidualReportTable
+          rows={paginatedReportRows}
+          view={reportView}
+          onEditRow={loadReportRow}
+          onSaveRow={(row) => void saveReportRow(row)}
+          onUpdateRow={updateReportRow}
+          rowEdits={rowEdits}
+          savingRowKey={savingRowKey}
+        />
         <PortalPagination
           page={activePage}
           pageCount={pageCount}
@@ -1416,12 +1577,41 @@ function formFromResidual(residual: MonthlyResidual): ResidualForm {
     netProfit: inputValue(residual.greenhub_net_profit),
     oneTimeFees: inputValue(residual.one_time_fees),
     platformId: residual.platform_id ?? "",
+    posIntegrationFee: inputValue(residual.pos_integration_fee),
     profitPerTransaction: inputValue(residual.profit_per_transaction),
     rebate: inputValue(residual.rebate),
     status: residual.residual_status,
     surcharge: inputValue(residual.surcharge),
     transactionsPerMonth: inputValue(residual.transactions_per_month),
     year: String(residual.residual_year),
+  };
+}
+
+function formFromReportRow(row: ResidualReportRow): ResidualForm {
+  const period = parseReportMonth(row.monthValue);
+
+  return {
+    agentCommissionStructure: row.agentCommissionStructure === "Not specified" ? "" : row.agentCommissionStructure,
+    agentId: row.agentId,
+    agentProfit: rowInputAmount(row.agentProfit),
+    equipmentCost: rowInputAmount(row.equipmentCost),
+    greenhubPobBuyRate: rowInputAmount(row.greenhubPobBuyRate),
+    greenhubPobNetProfit: rowInputAmount(row.greenhubPobNetProfit),
+    greenhubPobProfitPerTransaction: rowInputAmount(row.greenhubPobProfitPerTransaction),
+    merchantNotes: row.merchantNotes,
+    merchantAccountId: row.merchantAccountId,
+    month: period ? months[period.month - 1] ?? "January" : "January",
+    monthlySalesVolume: rowInputAmount(row.salesVolume),
+    netProfit: rowInputAmount(row.greenhubNetProfit),
+    oneTimeFees: "",
+    platformId: row.platformId,
+    posIntegrationFee: rowInputAmount(row.posIntegrationFee),
+    profitPerTransaction: rowInputAmount(row.profitPerTransaction),
+    rebate: rowInputAmount(row.rebate),
+    status: row.status,
+    surcharge: rowInputAmount(row.surcharge),
+    transactionsPerMonth: rowInputAmount(row.transactionsPerMonth),
+    year: period?.year ?? "2026",
   };
 }
 
@@ -1443,6 +1633,7 @@ function ResidualInput({
     | "monthlySalesVolume"
     | "netProfit"
     | "oneTimeFees"
+    | "posIntegrationFee"
     | "profitPerTransaction"
     | "rebate"
     | "surcharge"
@@ -1539,19 +1730,51 @@ function ResidualSummary({
   );
 }
 
+function QuickResidualInput({
+  ariaLabel,
+  onValueChange,
+  readOnly = false,
+  value,
+}: {
+  ariaLabel: string;
+  onValueChange?: (value: string) => void;
+  readOnly?: boolean;
+  value: string;
+}) {
+  return (
+    <input
+      aria-label={ariaLabel}
+      readOnly={readOnly}
+      value={value}
+      onChange={(event) => onValueChange?.(event.target.value)}
+      className={`h-9 w-28 rounded-lg border border-slate-300 px-2 text-right text-xs font-medium tabular-nums text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 ${
+        readOnly ? "bg-slate-100 text-slate-600" : "bg-white"
+      }`}
+    />
+  );
+}
+
 function ResidualReportTable({
   onEditRow,
+  onSaveRow,
+  onUpdateRow,
   rows,
+  rowEdits,
+  savingRowKey,
   view,
 }: {
   onEditRow: (row: ResidualReportRow) => void;
+  onSaveRow: (row: ResidualReportRow) => void;
+  onUpdateRow: (row: ResidualReportRow, field: keyof ResidualForm, value: string) => void;
   rows: ResidualReportRow[];
+  rowEdits: Record<string, ResidualForm>;
+  savingRowKey: string | null;
   view: ResidualReportView;
 }) {
   if (view === "pob") {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1450px] text-left text-xs text-slate-900">
+        <table className="w-full min-w-[1780px] text-left text-xs text-slate-900">
           <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
             <tr>
               <th className="p-4">Merchant</th>
@@ -1561,6 +1784,7 @@ function ResidualReportTable({
               <th className="px-3 py-3 text-right">POB Buy Rate</th>
               <th className="px-3 py-3 text-right">Surcharge</th>
               <th className="px-3 py-3 text-right">Rebate to Merchant</th>
+              <th className="px-3 py-3 text-right">POS Integration Fee</th>
               <th className="px-3 py-3 text-right">Agent Profit / Transaction</th>
               <th className="px-3 py-3 text-right">GreenHub POB Profit / Transaction</th>
               <th className="px-3 py-3 text-right">Transactions</th>
@@ -1571,25 +1795,111 @@ function ResidualReportTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
-                <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
-                <td className="px-3 py-3">{row.agent}</td>
-                <td className="px-3 py-3">{row.platform}</td>
-                <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-                <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobBuyRate)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{currency(row.surcharge)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{currency(row.rebate)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{currency(row.profitPerTransaction)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{currency(row.greenhubPobProfitPerTransaction)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{row.transactionsPerMonth.toLocaleString()}</td>
-                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
-                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.greenhubPobNetProfit)}</td>
-                <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
-                <ResidualRowAction row={row} onEditRow={onEditRow} />
-              </tr>
-            ))}
-            <ResidualEmptyRow colSpan={14} rows={rows} />
+            {rows.map((row) => {
+              const key = reportRowEditKey(row);
+              const edit = withPobCalculations(rowEdits[key] ?? formFromReportRow(row));
+              const saving = savingRowKey === key;
+
+              return (
+                <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
+                  <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
+                  <td className="px-3 py-3">{row.agent}</td>
+                  <td className="px-3 py-3">{row.platform}</td>
+                  <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} POB buy rate`}
+                      value={edit.greenhubPobBuyRate}
+                      onValueChange={(value) => onUpdateRow(row, "greenhubPobBuyRate", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} surcharge`}
+                      value={edit.surcharge}
+                      onValueChange={(value) => onUpdateRow(row, "surcharge", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} rebate to merchant`}
+                      value={edit.rebate}
+                      onValueChange={(value) => onUpdateRow(row, "rebate", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} POS integration fee`}
+                      value={edit.posIntegrationFee}
+                      onValueChange={(value) => onUpdateRow(row, "posIntegrationFee", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} agent profit per transaction`}
+                      value={edit.profitPerTransaction}
+                      onValueChange={(value) => onUpdateRow(row, "profitPerTransaction", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} GreenHub POB profit per transaction`}
+                      readOnly
+                      value={edit.greenhubPobProfitPerTransaction}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} transactions`}
+                      value={edit.transactionsPerMonth}
+                      onValueChange={(value) => onUpdateRow(row, "transactionsPerMonth", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} agent POB residual`}
+                      readOnly
+                      value={edit.agentProfit}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} GreenHub POB net profit`}
+                      readOnly
+                      value={edit.greenhubPobNetProfit}
+                    />
+                  </td>
+                  <td className="max-w-64 px-3 py-3">
+                    <input
+                      aria-label={`${row.merchant} merchant notes`}
+                      value={edit.merchantNotes}
+                      onChange={(event) => onUpdateRow(row, "merchantNotes", event.target.value)}
+                      className="h-9 w-48 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onSaveRow(row)}
+                        className="rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {saving ? "Saving" : row.hasResidual ? "Save" : "Create"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onEditRow(row)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition-colors hover:bg-slate-100"
+                      >
+                        Open
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            <ResidualEmptyRow colSpan={15} rows={rows} />
           </tbody>
         </table>
       </div>
@@ -1758,6 +2068,7 @@ type DemoResidualRow = {
   notes: string;
   platform: string;
   pobNetProfit: string;
+  posIntegrationFee: string;
   profitPerTransaction: string;
   rebate: string;
   status: "Draft" | "Finalized";
@@ -1792,6 +2103,7 @@ function demoReportRow(row: DemoResidualRow): ResidualReportRow {
     monthValue: reportMonthValue(row.month),
     platform: row.platform,
     platformId: row.platform,
+    posIntegrationFee: amount(row.posIntegrationFee),
     profitPerTransaction: amount(row.profitPerTransaction),
     rebate: amount(row.rebate),
     residualId: null,
@@ -1821,6 +2133,7 @@ const demoResidualRows: DemoResidualRow[] = [
     transactions: "546",
     agentProfit: "$1,020.79",
     pobNetProfit: "$655.20",
+    posIntegrationFee: "$0.00",
     equipment: "$250.00",
     notes: "Clean period. Equipment deducted from payout.",
     status: "Finalized",
@@ -1842,6 +2155,7 @@ const demoResidualRows: DemoResidualRow[] = [
     transactions: "366",
     agentProfit: "$332.58",
     pobNetProfit: "$384.30",
+    posIntegrationFee: "$0.00",
     equipment: "$200.00",
     notes: "Draft pending final transaction review.",
     status: "Draft",

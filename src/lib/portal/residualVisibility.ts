@@ -13,5 +13,6 @@ export function visibleResidualsForRole(
     greenhub_pob_net_profit: 0,
     greenhub_pob_profit_per_transaction: 0,
     merchant_notes: null,
+    pos_integration_fee: 0,
   }));
 }

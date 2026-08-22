@@ -163,6 +163,7 @@ export type MonthlyResidual = {
   monthly_sales_volume: NumericValue;
   one_time_fees: NumericValue;
   platform_id: string | null;
+  pos_integration_fee?: NumericValue;
   profit_per_transaction: NumericValue;
   rebate: NumericValue;
   residual_month: number;

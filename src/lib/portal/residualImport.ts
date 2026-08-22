@@ -7,10 +7,10 @@ export type ParsedResidualImportRow = {
   greenhubPobNetProfit: string;
   greenhubPobProfitPerTransaction: string;
   grossPobProfitPerTransaction: string;
-  integrationFee: string;
   merchantName: string;
   merchantNotes: string;
   monthlySalesVolume: string;
+  posIntegrationFee: string;
   profitPerTransaction: string;
   rebate: string;
   sourceIndex: number;
@@ -54,10 +54,10 @@ const fieldAliases: Record<ImportField, string[]> = {
     "gross profit per transaction",
     "pob margin per transaction",
   ],
-  integrationFee: ["integration fee"],
   merchantName: ["merchant", "merchant name", "account", "account name", "location name"],
   merchantNotes: ["merchant notes", "notes", "billing model", "iso/referral"],
   monthlySalesVolume: ["merchant sales volume", "monthly sales volume", "sales volume"],
+  posIntegrationFee: ["pos integration fee", "integration fee", "pos fee"],
   profitPerTransaction: ["agent profit per transaction", "agent profit / transaction", "amount due per transaction"],
   rebate: ["rebate to merchant", "merchant rebate", "rebate"],
   sourceStatus: ["status"],
@@ -330,7 +330,7 @@ export function parseRows(fileName: string, sheetName: string, rows: string[][])
     const surcharge = valueAt(row, best.map.get("surcharge"));
     const rebate = valueAt(row, best.map.get("rebate"));
     const greenhubPobBuyRate = valueAt(row, best.map.get("greenhubPobBuyRate"));
-    const integrationFee = valueAt(row, best.map.get("integrationFee"));
+    const posIntegrationFee = valueAt(row, best.map.get("posIntegrationFee"));
     const transactionsPerMonth = valueAt(row, best.map.get("transactionsPerMonth"));
     const monthlySalesVolume = valueAt(row, best.map.get("monthlySalesVolume"));
     const greenhubNetProfit = valueAt(row, best.map.get("greenhubNetProfit"));
@@ -351,7 +351,7 @@ export function parseRows(fileName: string, sheetName: string, rows: string[][])
         numberValue(surcharge) -
         numberValue(greenhubPobBuyRate) -
         numberValue(rebate) -
-        numberValue(integrationFee);
+        numberValue(posIntegrationFee);
       if (gross) grossPobProfitPerTransaction = formatSignedRate(gross);
     }
     if (!profitPerTransaction && grossPobProfitPerTransaction && shareValue(agentCommissionStructure)) {
@@ -383,12 +383,12 @@ export function parseRows(fileName: string, sheetName: string, rows: string[][])
       greenhubPobNetProfit,
       greenhubPobProfitPerTransaction,
       grossPobProfitPerTransaction,
-      integrationFee,
       merchantName,
       merchantNotes: [sourceStatus ? `Source status: ${sourceStatus}` : "", valueAt(row, best.map.get("merchantNotes"))]
         .filter(Boolean)
         .join(" | "),
       monthlySalesVolume,
+      posIntegrationFee,
       profitPerTransaction,
       rebate,
       sourceIndex: index + 1,
