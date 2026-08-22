@@ -432,6 +432,13 @@ function AdminResidualsContent() {
     () => new Map(data?.platforms.map((platform) => [platform.id, platform.name]) ?? []),
     [data?.platforms]
   );
+  const platformTypes = useMemo(
+    () => new Map(data?.platforms.map((platform) => [platform.id, inferredResidualPlatformType(platform)]) ?? []),
+    [data?.platforms]
+  );
+  const residualTypeForPlatformId = (platformId: string | null | undefined) =>
+    platformTypes.get(platformId ?? "") ??
+    inferredResidualPlatformType(platformNames.get(platformId ?? "") ?? "Unassigned");
   const normalizedAccounts = useMemo(
     () =>
       data?.accounts.map((account) => ({
@@ -966,12 +973,19 @@ function AdminResidualsContent() {
       };
     }
 
+    const matchesReportView = (row: ResidualReportRow) =>
+      reportView === "total" || row.residualType === reportView;
+
     if (!selectedReportPeriod) {
-      return data.residuals.map((residual) => rowFromResidual(residual));
+      return data.residuals.map((residual) => rowFromResidual(residual)).filter(matchesReportView);
     }
 
     return data.accounts
       .filter((account) => account.status !== "closed")
+      .filter(
+        (account) =>
+          reportView === "total" || residualTypeForPlatformId(account.platform_id) === reportView
+      )
       .map((account) => {
         const platformId = account.platform_id ?? "";
         const residual =
@@ -1024,6 +1038,8 @@ function AdminResidualsContent() {
     agentNames,
     data,
     platformNames,
+    platformTypes,
+    reportView,
     residualsByAccountPeriod,
     residualBaselinesByAccountPlatform,
     selectedReportPeriod,
