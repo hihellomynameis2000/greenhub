@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, ChevronDown, CreditCard, FileText, Layers3, Lock, ReceiptText, Trash2, Unlock, UploadCloud } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PortalPagination } from "@/components/portal/PortalPagination";
@@ -30,6 +30,8 @@ const months = [
 
 const residualsPerPage = 10;
 const defaultReportMonth = "2026-7";
+const defaultEntryMonth = "July";
+const defaultEntryYear = "2026";
 
 type ResidualReportView = "pob" | "cc" | "total";
 
@@ -140,7 +142,7 @@ const initialForm: ResidualForm = {
   greenhubPobProfitPerTransaction: "",
   merchantNotes: "",
   merchantAccountId: "",
-  month: "January",
+  month: defaultEntryMonth,
   monthlySalesVolume: "",
   netProfit: "",
   oneTimeFees: "",
@@ -151,7 +153,7 @@ const initialForm: ResidualForm = {
   status: "draft",
   surcharge: "",
   transactionsPerMonth: "",
-  year: "2026",
+  year: defaultEntryYear,
 };
 
 const demoDrafts: DraftEntry[] = [
@@ -356,6 +358,16 @@ function residualKey(accountId: string, platformId: string | null | undefined, m
   return `${accountId}::${platformId ?? ""}::${monthValue}`;
 }
 
+function formMonthValue(entry: Pick<ResidualForm, "month" | "year">) {
+  return `${entry.year}-${months.indexOf(entry.month) + 1}`;
+}
+
+function platformResidualType(platform: Platform | null | undefined): ResidualPlatformType {
+  return platform?.residual_type === "pob" || inferredResidualPlatformType(platform?.name ?? "") === "pob"
+    ? "pob"
+    : "cc";
+}
+
 function residualBaseKey(accountId: string, platformId: string | null | undefined) {
   return `${accountId}::${platformId ?? ""}`;
 }
@@ -433,7 +445,7 @@ function AdminResidualsContent() {
     [data?.platforms]
   );
   const platformTypes = useMemo(
-    () => new Map(data?.platforms.map((platform) => [platform.id, inferredResidualPlatformType(platform)]) ?? []),
+    () => new Map(data?.platforms.map((platform) => [platform.id, platformResidualType(platform)]) ?? []),
     [data?.platforms]
   );
   const residualTypeForPlatformId = (platformId: string | null | undefined) =>
@@ -479,7 +491,7 @@ function AdminResidualsContent() {
         data?.platforms.find((item) => item.id === (importPlatformId || accountMatch?.platform_id || "")) ??
         null;
       const agentName = agentNames.get(accountMatch?.assigned_agent_id ?? "") ?? "";
-      const residualType = inferredResidualPlatformType(platform ?? "");
+      const residualType = platformResidualType(platform);
       const baselineResidual = accountMatch
         ? residualBaselinesByAccountPlatform.get(residualBaseKey(accountMatch.id, platform?.id ?? "")) ??
           residualBaselinesByAccountPlatform.get(residualBaseKey(accountMatch.id, "")) ??
@@ -517,10 +529,9 @@ function AdminResidualsContent() {
     platformOptions.find((platform) => platform.value === effectivePlatformId)?.label ||
     platformNames.get(effectivePlatformId) ||
     effectivePlatformId;
-  const selectedPlatformRecord = data?.platforms.find((platform) => platform.id === effectivePlatformId);
   const residualEntryType: ResidualPlatformType = effectivePlatformId
-    ? inferredResidualPlatformType(selectedPlatformRecord ?? selectedPlatformName)
-    : "cc";
+    ? residualTypeForPlatformId(effectivePlatformId)
+    : inferredResidualPlatformType(selectedPlatformName);
   const showPobFields = residualEntryType !== "cc";
   const showCcFields = residualEntryType !== "pob";
   const reportMonthOptions = useMemo(() => {
@@ -586,7 +597,100 @@ function AdminResidualsContent() {
     setReportMonth((current) => (current === "all" ? importMonthValue : current));
   }, [importMonth, importYear]);
 
+  function formForAccountPeriod(base: ResidualForm, account: MerchantAccount, platformOverride?: string) {
+    const platformId = platformOverride ?? account.platform_id ?? base.platformId;
+    const periodValue = formMonthValue(base);
+    const residual =
+      residualsByAccountPeriod.get(residualKey(account.id, platformId, periodValue)) ??
+      residualsByAccountPeriod.get(residualKey(account.id, "", periodValue));
+
+    if (residual) {
+      const entry = formFromResidual(residual);
+
+      return {
+        entry: {
+          ...entry,
+          agentId: entry.agentId || account.assigned_agent_id || "",
+          platformId: entry.platformId || platformId,
+        },
+        residualId: residual.id,
+      };
+    }
+
+    const baseline =
+      residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, platformId)) ??
+      residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, ""));
+
+    const entry = withPobCalculations({
+      ...base,
+      agentCommissionStructure:
+        baseline?.agent_commission_structure ||
+        account.commission_structure ||
+        "",
+      agentId: account.assigned_agent_id ?? "",
+      agentProfit: "",
+      equipmentCost: rowInputAmount(amount(baseline?.equipment_cost)),
+      greenhubPobBuyRate: rowInputAmount(amount(baseline?.greenhub_pob_buy_rate)),
+      greenhubPobNetProfit: "",
+      greenhubPobProfitPerTransaction: rowInputAmount(
+        amount(baseline?.greenhub_pob_profit_per_transaction)
+      ),
+      merchantAccountId: account.id,
+      merchantNotes: account.internal_notes ?? "",
+      monthlySalesVolume: "",
+      netProfit: "",
+      platformId,
+      posIntegrationFee: rowInputAmount(amount(baseline?.pos_integration_fee)),
+      profitPerTransaction: rowInputAmount(amount(baseline?.profit_per_transaction)),
+      rebate: rowInputAmount(amount(baseline?.rebate)),
+      surcharge: rowInputAmount(amount(baseline?.surcharge)),
+      transactionsPerMonth: "",
+    });
+
+    return { entry, residualId: null };
+  }
+
   function updateForm(field: keyof ResidualForm, value: string) {
+    if (
+      data &&
+      (field === "merchantAccountId" || field === "month" || field === "year" || field === "platformId")
+    ) {
+      const next = { ...form, [field]: value };
+      const accountId = field === "merchantAccountId" ? value : next.merchantAccountId;
+      const account = data.accounts.find((item) => item.id === accountId);
+
+      if (account) {
+        const { entry, residualId } = formForAccountPeriod(
+          next,
+          account,
+          field === "platformId" ? value : undefined
+        );
+        const nextMonthValue = formMonthValue(entry);
+        setForm(entry);
+        setEditingDraftId(residualId);
+        setReportAgent(entry.agentId || account.assigned_agent_id || "all");
+        setReportMonth(nextMonthValue);
+        setReportView(residualTypeForPlatformId(entry.platformId || account.platform_id));
+        setRecentPage(1);
+        return;
+      }
+    }
+
+    if (field === "month" || field === "year") {
+      setReportMonth(formMonthValue({ ...form, [field]: value }));
+      setRecentPage(1);
+    }
+
+    if (field === "agentId") {
+      setReportAgent(value || "all");
+      setRecentPage(1);
+    }
+
+    if (field === "platformId") {
+      setReportView(residualTypeForPlatformId(value));
+      setRecentPage(1);
+    }
+
     setForm((current) => {
       if (field !== "merchantAccountId") {
         const next = { ...current, [field]: value };
@@ -936,7 +1040,6 @@ function AdminResidualsContent() {
       const rowAccount =
         account ?? data?.accounts.find((item) => item.id === residual.merchant_account_id) ?? null;
       const platformId = residual.platform_id ?? rowAccount?.platform_id ?? "";
-      const platformRecord = data?.platforms.find((platform) => platform.id === platformId);
       const agentId = residual.agent_id || rowAccount?.assigned_agent_id || "";
 
       return {
@@ -965,7 +1068,7 @@ function AdminResidualsContent() {
         profitPerTransaction: amount(residual.profit_per_transaction),
         rebate: amount(residual.rebate),
         residualId: residual.id,
-        residualType: inferredResidualPlatformType(platformRecord ?? platformNames.get(platformId) ?? "Unassigned"),
+        residualType: residualTypeForPlatformId(platformId),
         salesVolume: amount(residual.monthly_sales_volume),
         status: residual.residual_status,
         surcharge: amount(residual.surcharge),
@@ -994,7 +1097,6 @@ function AdminResidualsContent() {
 
         if (residual) return rowFromResidual(residual, account);
 
-        const platformRecord = data.platforms.find((platform) => platform.id === platformId);
         const agentId = account.assigned_agent_id ?? "";
         const baseline =
           residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, platformId)) ??
@@ -1026,7 +1128,7 @@ function AdminResidualsContent() {
           profitPerTransaction: amount(baseline?.profit_per_transaction),
           rebate: amount(baseline?.rebate),
           residualId: null,
-          residualType: inferredResidualPlatformType(platformRecord ?? platformNames.get(platformId) ?? "Unassigned"),
+          residualType: residualTypeForPlatformId(platformId),
           salesVolume: 0,
           status: "draft" as const,
           surcharge: amount(baseline?.surcharge),
@@ -1282,40 +1384,52 @@ function AdminResidualsContent() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <PortalSelect
-            value={form.merchantAccountId}
-            onValueChange={(merchantAccountId) => updateForm("merchantAccountId", merchantAccountId)}
-            options={[{ disabled: true, label: "Select merchant account", value: "" }, ...accountOptions]}
-          />
-          <PortalSelect
-            value={form.agentId}
-            onValueChange={(agentId) => updateForm("agentId", agentId)}
-            options={[{ disabled: true, label: "Select agent", value: "" }, ...agentOptions]}
-          />
-          <PortalSelect
-            value={form.platformId}
-            onValueChange={(platformId) => updateForm("platformId", platformId)}
-            options={[{ disabled: true, label: "Select platform", value: "" }, ...platformOptions]}
-          />
-          <PortalSelect
-            value={form.month}
-            onValueChange={(month) => updateForm("month", month)}
-            options={months.map((month) => ({ label: month, value: month }))}
-          />
-          <input
-            className={portalInputClass}
-            placeholder="Year"
-            value={form.year}
-            onChange={(event) => updateForm("year", event.target.value)}
-          />
-          <PortalSelect
-            value={form.status}
-            onValueChange={(status) => updateForm("status", status)}
-            options={[
-              { label: "Draft", value: "draft" },
-              { label: "Finalized", value: "finalized" },
-            ]}
-          />
+          <ResidualFieldShell label="Merchant location">
+            <PortalSelect
+              value={form.merchantAccountId}
+              onValueChange={(merchantAccountId) => updateForm("merchantAccountId", merchantAccountId)}
+              options={[{ disabled: true, label: "Select merchant account", value: "" }, ...accountOptions]}
+            />
+          </ResidualFieldShell>
+          <ResidualFieldShell label="Assigned agent">
+            <PortalSelect
+              value={form.agentId}
+              onValueChange={(agentId) => updateForm("agentId", agentId)}
+              options={[{ disabled: true, label: "Select agent", value: "" }, ...agentOptions]}
+            />
+          </ResidualFieldShell>
+          <ResidualFieldShell label="Processing platform">
+            <PortalSelect
+              value={form.platformId}
+              onValueChange={(platformId) => updateForm("platformId", platformId)}
+              options={[{ disabled: true, label: "Select platform", value: "" }, ...platformOptions]}
+            />
+          </ResidualFieldShell>
+          <ResidualFieldShell label="Residual month">
+            <PortalSelect
+              value={form.month}
+              onValueChange={(month) => updateForm("month", month)}
+              options={months.map((month) => ({ label: month, value: month }))}
+            />
+          </ResidualFieldShell>
+          <ResidualFieldShell label="Residual year">
+            <input
+              className={portalInputClass}
+              placeholder="Year"
+              value={form.year}
+              onChange={(event) => updateForm("year", event.target.value)}
+            />
+          </ResidualFieldShell>
+          <ResidualFieldShell label="Entry status">
+            <PortalSelect
+              value={form.status}
+              onValueChange={(status) => updateForm("status", status)}
+              options={[
+                { label: "Draft", value: "draft" },
+                { label: "Finalized", value: "finalized" },
+              ]}
+            />
+          </ResidualFieldShell>
           {showPobFields ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 md:col-span-3">
               <div className="flex items-center gap-2 text-sm text-slate-700">
@@ -1338,6 +1452,12 @@ function AdminResidualsContent() {
             </div>
           ) : null}
           {showPobFields ? (
+            <ResidualSectionLabel
+              title="Locked account setup"
+              description="Saved merchant terms for this account. Unlock only when a permanent rate, fee, or commission value needs to change."
+            />
+          ) : null}
+          {showPobFields ? (
             <ResidualInput
               label="GreenHub POB Buy Rate"
               field="greenhubPobBuyRate"
@@ -1346,14 +1466,21 @@ function AdminResidualsContent() {
               disabled={pobFieldsLocked && residualEntryType === "pob"}
             />
           ) : null}
-          <input
-            className={portalInputClass}
-            placeholder="Agent Commission Structure"
-            value={form.agentCommissionStructure}
-            onChange={(event) => updateForm("agentCommissionStructure", event.target.value)}
-          />
+          <ResidualFieldShell label="Agent commission structure">
+            <input
+              className={`${portalInputClass} disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none`}
+              disabled={pobFieldsLocked && residualEntryType === "pob"}
+              placeholder="Agent Commission Structure"
+              value={form.agentCommissionStructure}
+              onChange={(event) => updateForm("agentCommissionStructure", event.target.value)}
+            />
+          </ResidualFieldShell>
           {showCcFields ? (
             <>
+              <ResidualSectionLabel
+                title="CC residual values"
+                description="Card-processing monthly values for the selected merchant and reporting month."
+              />
               <ResidualInput label="Monthly Sales Volume" field="monthlySalesVolume" form={form} updateForm={updateForm} />
               <ResidualInput label="GreenHub Net Profit" field="netProfit" form={form} updateForm={updateForm} />
             </>
@@ -1395,6 +1522,10 @@ function AdminResidualsContent() {
                 updateForm={updateForm}
                 disabled={pobFieldsLocked && residualEntryType === "pob"}
               />
+              <ResidualSectionLabel
+                title="Monthly POB values"
+                description="Enter the transaction count for this month. Agent residual and GreenHub POB net profit recalculate from the locked account setup."
+              />
               <ResidualInput label="Transactions Per Month" field="transactionsPerMonth" form={form} updateForm={updateForm} />
             </>
           ) : null}
@@ -1414,14 +1545,24 @@ function AdminResidualsContent() {
               disabled={pobFieldsLocked && residualEntryType === "pob"}
             />
           ) : null}
-          <ResidualInput label="Equipment Cost" field="equipmentCost" form={form} updateForm={updateForm} />
-          <textarea
-            className={`${portalInputClass} md:col-span-3`}
-            placeholder="Merchant Notes"
-            rows={3}
-            value={form.merchantNotes}
-            onChange={(event) => updateForm("merchantNotes", event.target.value)}
+          <ResidualInput
+            label="Equipment Cost"
+            field="equipmentCost"
+            form={form}
+            updateForm={updateForm}
+            disabled={pobFieldsLocked && residualEntryType === "pob"}
           />
+          <div className="md:col-span-3">
+            <ResidualFieldShell label="Merchant notes">
+              <textarea
+                className={portalInputClass}
+                placeholder="Merchant Notes"
+                rows={3}
+                value={form.merchantNotes}
+                onChange={(event) => updateForm("merchantNotes", event.target.value)}
+              />
+            </ResidualFieldShell>
+          </div>
         </div>
 
         {error ? <p className="mt-4 text-sm font-medium text-rose-700">{error}</p> : null}
@@ -1554,11 +1695,28 @@ function AdminResidualsContent() {
               );
             })}
           </div>
+          {reportView === "pob" ? (
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPobFieldsLocked((locked) => !locked)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100"
+              >
+                {pobFieldsLocked ? (
+                  <Lock aria-hidden="true" className="h-4 w-4 text-slate-600" />
+                ) : (
+                  <Unlock aria-hidden="true" className="h-4 w-4 text-slate-600" />
+                )}
+                {pobFieldsLocked ? "Unlock POB static fields" : "Lock POB static fields"}
+              </button>
+            </div>
+          ) : null}
         </div>
         <ResidualSummary view={reportView} totals={reportTotals} />
         <ResidualReportTable
           rows={paginatedReportRows}
           view={reportView}
+          pobFieldsLocked={pobFieldsLocked}
           onEditRow={loadReportRow}
           onSaveRow={(row) => void saveReportRow(row)}
           onUpdateRow={updateReportRow}
@@ -1660,13 +1818,15 @@ function ResidualInput({
   updateForm: (field: keyof ResidualForm, value: string) => void;
 }) {
   return (
-    <input
-      className={`${portalInputClass} disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none`}
-      disabled={disabled}
-      placeholder={label}
-      value={form[field]}
-      onChange={(event) => updateForm(field, event.target.value)}
-    />
+    <ResidualFieldShell label={label}>
+      <input
+        className={`${portalInputClass} disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none`}
+        disabled={disabled}
+        placeholder={label}
+        value={form[field]}
+        onChange={(event) => updateForm(field, event.target.value)}
+      />
+    </ResidualFieldShell>
   );
 }
 
@@ -1689,6 +1849,36 @@ function TotalTile({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-slate-300 bg-white p-3">
       <p className="text-xs font-medium text-slate-600">{label}</p>
       <p className="mt-1 text-lg font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function ResidualFieldShell({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs font-semibold text-slate-700">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function ResidualSectionLabel({
+  description,
+  title,
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 md:col-span-3">
+      <p className="text-sm font-semibold text-slate-900">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
     </div>
   );
 }
@@ -1774,6 +1964,7 @@ function ResidualReportTable({
   onEditRow,
   onSaveRow,
   onUpdateRow,
+  pobFieldsLocked,
   rows,
   rowEdits,
   savingRowKey,
@@ -1782,6 +1973,7 @@ function ResidualReportTable({
   onEditRow: (row: ResidualReportRow) => void;
   onSaveRow: (row: ResidualReportRow) => void;
   onUpdateRow: (row: ResidualReportRow, field: keyof ResidualForm, value: string) => void;
+  pobFieldsLocked: boolean;
   rows: ResidualReportRow[];
   rowEdits: Record<string, ResidualForm>;
   savingRowKey: string | null;
@@ -1825,6 +2017,7 @@ function ResidualReportTable({
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} POB buy rate`}
+                      readOnly={pobFieldsLocked}
                       value={edit.greenhubPobBuyRate}
                       onValueChange={(value) => onUpdateRow(row, "greenhubPobBuyRate", value)}
                     />
@@ -1832,6 +2025,7 @@ function ResidualReportTable({
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} surcharge`}
+                      readOnly={pobFieldsLocked}
                       value={edit.surcharge}
                       onValueChange={(value) => onUpdateRow(row, "surcharge", value)}
                     />
@@ -1839,6 +2033,7 @@ function ResidualReportTable({
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} rebate to merchant`}
+                      readOnly={pobFieldsLocked}
                       value={edit.rebate}
                       onValueChange={(value) => onUpdateRow(row, "rebate", value)}
                     />
@@ -1846,6 +2041,7 @@ function ResidualReportTable({
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} POS integration fee`}
+                      readOnly={pobFieldsLocked}
                       value={edit.posIntegrationFee}
                       onValueChange={(value) => onUpdateRow(row, "posIntegrationFee", value)}
                     />
@@ -1853,6 +2049,7 @@ function ResidualReportTable({
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} agent profit per transaction`}
+                      readOnly={pobFieldsLocked}
                       value={edit.profitPerTransaction}
                       onValueChange={(value) => onUpdateRow(row, "profitPerTransaction", value)}
                     />
