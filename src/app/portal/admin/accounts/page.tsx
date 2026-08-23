@@ -16,6 +16,9 @@ const initialForm = {
   commissionStructure: "",
   internalNotes: "",
   platformId: "",
+  primaryAgentSplit: "100",
+  secondaryAgentId: "",
+  secondaryAgentSplit: "0",
   status: "active",
 };
 
@@ -23,10 +26,18 @@ const initialAccountEdit = {
   accountName: "",
   assignedAgentId: "",
   platformId: "",
+  primaryAgentSplit: "100",
+  secondaryAgentId: "",
+  secondaryAgentSplit: "0",
   status: "active",
 };
 
 type AccountEditForm = typeof initialAccountEdit;
+
+function inputPercent(value: unknown, fallback: string) {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value).replace(/%/g, "");
+}
 
 export default function AdminAccountsPage() {
   return (
@@ -78,7 +89,9 @@ function AdminAccountsContent() {
     return data.accounts.filter(
       (account) =>
         (portfolioPlatform === "all" || account.platform_id === portfolioPlatform) &&
-        (portfolioAgent === "all" || account.assigned_agent_id === portfolioAgent)
+        (portfolioAgent === "all" ||
+          account.assigned_agent_id === portfolioAgent ||
+          account.secondary_agent_id === portfolioAgent)
     );
   }, [data, portfolioAgent, portfolioPlatform]);
   const filteredDemoAccounts = useMemo(
@@ -182,6 +195,9 @@ function AdminAccountsContent() {
       accountName: account.account_name,
       assignedAgentId: account.assigned_agent_id ?? "",
       platformId: account.platform_id ?? "",
+      primaryAgentSplit: inputPercent(account.primary_agent_split, "100"),
+      secondaryAgentId: account.secondary_agent_id ?? "",
+      secondaryAgentSplit: inputPercent(account.secondary_agent_split, "0"),
       status: account.status ?? "active",
     });
   }
@@ -207,6 +223,9 @@ function AdminAccountsContent() {
           accountName: accountEditForm.accountName,
           id,
           platformId: accountEditForm.platformId,
+          primaryAgentSplit: accountEditForm.primaryAgentSplit,
+          secondaryAgentId: accountEditForm.secondaryAgentId,
+          secondaryAgentSplit: accountEditForm.secondaryAgentId ? accountEditForm.secondaryAgentSplit : "0",
           status: accountEditForm.status,
         }),
       });
@@ -316,7 +335,7 @@ function AdminAccountsContent() {
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-            Assigned agent
+            Primary agent
             <PortalSelect
               value={form.assignedAgentId}
               onValueChange={(assignedAgentId) =>
@@ -326,6 +345,47 @@ function AdminAccountsContent() {
                 { disabled: true, label: "Assign agent", value: "" },
                 ...agentOptions,
               ]}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+            Primary agent split
+            <input
+              className={portalInputClass}
+              inputMode="decimal"
+              placeholder="100"
+              value={form.primaryAgentSplit}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, primaryAgentSplit: event.target.value }))
+              }
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+            Sub-agent
+            <PortalSelect
+              value={form.secondaryAgentId}
+              onValueChange={(secondaryAgentId) =>
+                setForm((current) => ({
+                  ...current,
+                  secondaryAgentId,
+                  secondaryAgentSplit: secondaryAgentId ? current.secondaryAgentSplit : "0",
+                }))
+              }
+              options={[
+                { label: "No sub-agent", value: "" },
+                ...agentOptions.filter((agent) => agent.value !== form.assignedAgentId),
+              ]}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+            Sub-agent split
+            <input
+              className={portalInputClass}
+              inputMode="decimal"
+              placeholder="0"
+              value={form.secondaryAgentSplit}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, secondaryAgentSplit: event.target.value }))
+              }
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
@@ -341,10 +401,10 @@ function AdminAccountsContent() {
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">
-            Commission structure
+            Commission / split notes
             <input
               className={portalInputClass}
-              placeholder="Commission structure"
+              placeholder="20%, 80%, Nick(25%), 50% over $1.35 buy rate"
               value={form.commissionStructure}
               onChange={(event) =>
                 setForm((current) => ({ ...current, commissionStructure: event.target.value }))
@@ -402,7 +462,7 @@ function AdminAccountsContent() {
                 </th>
                 <th className="px-4 py-3 font-semibold">
                   <PortalSelect
-                    ariaLabel="Filter merchant portfolio by agent"
+                    ariaLabel="Filter merchant portfolio by agent ownership"
                     value={portfolioAgent}
                     onValueChange={setPortfolioAgent}
                     options={portfolioAgentOptions}
@@ -450,19 +510,53 @@ function AdminAccountsContent() {
                         </td>
                         <td className="px-4 py-3.5">
                           {editing ? (
-                            <PortalSelect
-                              ariaLabel="Edit assigned agent"
-                              value={accountEditForm.assignedAgentId}
-                              onValueChange={(value) =>
-                                setAccountEditField("assignedAgentId", value)
-                              }
-                              options={[
-                                { disabled: true, label: "Assign agent", value: "" },
-                                ...agentOptions,
-                              ]}
-                            />
+                            <div className="grid min-w-72 gap-2">
+                              <PortalSelect
+                                ariaLabel="Edit primary agent"
+                                value={accountEditForm.assignedAgentId}
+                                onValueChange={(value) =>
+                                  setAccountEditField("assignedAgentId", value)
+                                }
+                                options={[
+                                  { disabled: true, label: "Assign agent", value: "" },
+                                  ...agentOptions,
+                                ]}
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  aria-label="Primary agent split"
+                                  className={portalInputClass}
+                                  inputMode="decimal"
+                                  value={accountEditForm.primaryAgentSplit}
+                                  onChange={(event) =>
+                                    setAccountEditField("primaryAgentSplit", event.target.value)
+                                  }
+                                />
+                                <input
+                                  aria-label="Sub-agent split"
+                                  className={portalInputClass}
+                                  inputMode="decimal"
+                                  value={accountEditForm.secondaryAgentSplit}
+                                  onChange={(event) =>
+                                    setAccountEditField("secondaryAgentSplit", event.target.value)
+                                  }
+                                />
+                              </div>
+                              <PortalSelect
+                                ariaLabel="Edit sub-agent"
+                                value={accountEditForm.secondaryAgentId}
+                                onValueChange={(value) => setAccountEditField("secondaryAgentId", value)}
+                                options={[
+                                  { label: "No sub-agent", value: "" },
+                                  ...agentOptions.filter((agent) => agent.value !== accountEditForm.assignedAgentId),
+                                ]}
+                              />
+                            </div>
                           ) : (
-                            agentNames.get(account.assigned_agent_id ?? "") ?? "Unassigned"
+                            <AccountOwnership
+                              account={account}
+                              agentNames={agentNames}
+                            />
                           )}
                         </td>
                         <td className="px-5 py-3.5">
@@ -559,5 +653,39 @@ function AdminAccountsContent() {
         </div>
       </section>
     </>
+  );
+}
+
+function AccountOwnership({
+  account,
+  agentNames,
+}: {
+  account: MerchantAccount;
+  agentNames: Map<string, string>;
+}) {
+  const primaryAgent = agentNames.get(account.assigned_agent_id ?? "") ?? "Unassigned";
+  const primarySplit = inputPercent(account.primary_agent_split, "100");
+  const secondaryAgent = account.secondary_agent_id
+    ? agentNames.get(account.secondary_agent_id) ?? "Sub-agent"
+    : null;
+  const secondarySplit = inputPercent(account.secondary_agent_split, "0");
+
+  return (
+    <div className="space-y-1">
+      <p className="font-semibold text-slate-900">
+        {primaryAgent}
+        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+          {primarySplit}%
+        </span>
+      </p>
+      {secondaryAgent ? (
+        <p className="text-xs font-medium text-slate-600">
+          Sub-agent: {secondaryAgent}
+          <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
+            {secondarySplit}%
+          </span>
+        </p>
+      ) : null}
+    </div>
   );
 }

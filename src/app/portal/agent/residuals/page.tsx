@@ -7,6 +7,7 @@ import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
+import { accountAgentSplitPercent, splitLabel } from "@/lib/portal/agentSplits";
 import { inferredResidualPlatformType, type ResidualPlatformType } from "@/lib/portal/residualType";
 
 const residualsPerPage = 10;
@@ -58,6 +59,7 @@ type AgentResidualRow = {
   agent: string;
   agentCommissionStructure: string;
   agentProfit: number;
+  agentSplit: number;
   equipmentCost: number;
   id: string;
   merchant: string;
@@ -170,7 +172,7 @@ function AgentResidualsContent() {
   const [reportView, setReportView] = useState<ResidualReportView>("pob");
   const [page, setPage] = useState(1);
   const accountNames = new Map(data?.accounts.map((account) => [account.id, account.account_name]) ?? []);
-  const accountTerms = new Map(data?.accounts.map((account) => [account.id, account.commission_structure]) ?? []);
+  const accountsById = new Map(data?.accounts.map((account) => [account.id, account]) ?? []);
   const platformNames = new Map(data?.platforms.map((item) => [item.id, item.name]) ?? []);
   const platformTypes = new Map(data?.platforms.map((item) => [item.id, inferredResidualPlatformType(item)]) ?? []);
 
@@ -200,28 +202,43 @@ function AgentResidualsContent() {
       ];
   const rows = useMemo<AgentResidualRow[]>(
     () =>
-      data?.residuals.map((row) => ({
-        agent: data.profile.name,
-        agentCommissionStructure:
+      data?.residuals.map((row) => {
+        const account = accountsById.get(row.merchant_account_id);
+        const residualType =
+          platformTypes.get(row.platform_id ?? "") ??
+          inferredResidualPlatformType(platformNames.get(row.platform_id ?? ""));
+        const agentCommissionStructure =
           row.agent_commission_structure ||
-          accountTerms.get(row.merchant_account_id) ||
-          "Account terms",
-        agentProfit: amount(row.agent_profit),
-        equipmentCost: amount(row.equipment_cost),
-        id: row.id,
-        merchant: accountNames.get(row.merchant_account_id) ?? "Unknown account",
-        month: `${months[row.residual_month - 1]} ${row.residual_year}`,
-        monthValue: `${row.residual_year}-${row.residual_month}`,
-        platform: platformNames.get(row.platform_id ?? "") ?? "Unassigned",
-        profitPerTransaction: amount(row.profit_per_transaction),
-        rebate: amount(row.rebate),
-        residualType: platformTypes.get(row.platform_id ?? "") ?? inferredResidualPlatformType(platformNames.get(row.platform_id ?? "")),
-        salesVolume: amount(row.monthly_sales_volume),
-        status: row.residual_status,
-        surcharge: amount(row.surcharge),
-        transactionsPerMonth: amount(row.transactions_per_month),
-      })) ?? [],
-    [accountNames, accountTerms, data, platformNames, platformTypes]
+          account?.commission_structure ||
+          "Account terms";
+        const agentSplit = accountAgentSplitPercent({
+          account,
+          agentId: data.profile.id,
+          fallbackCommission: agentCommissionStructure,
+          residualType,
+        });
+
+        return {
+          agent: data.profile.name,
+          agentCommissionStructure,
+          agentProfit: amount(row.agent_profit),
+          agentSplit,
+          equipmentCost: amount(row.equipment_cost),
+          id: row.id,
+          merchant: accountNames.get(row.merchant_account_id) ?? "Unknown account",
+          month: `${months[row.residual_month - 1]} ${row.residual_year}`,
+          monthValue: `${row.residual_year}-${row.residual_month}`,
+          platform: platformNames.get(row.platform_id ?? "") ?? "Unassigned",
+          profitPerTransaction: amount(row.profit_per_transaction),
+          rebate: amount(row.rebate),
+          residualType,
+          salesVolume: amount(row.monthly_sales_volume),
+          status: row.residual_status,
+          surcharge: amount(row.surcharge),
+          transactionsPerMonth: amount(row.transactions_per_month),
+        };
+      }) ?? [],
+    [accountNames, accountsById, data, platformNames, platformTypes]
   );
   const demoRows = useMemo<AgentResidualRow[]>(
     () =>
@@ -229,6 +246,7 @@ function AgentResidualsContent() {
         agent: "Nicholas Sanchez",
         agentCommissionStructure: row.agentCommissionStructure,
         agentProfit: amount(row.residual),
+        agentSplit: 50,
         equipmentCost: amount(row.equipment),
         id: `${row.merchant}-${row.month}`,
         merchant: row.merchant,
@@ -442,7 +460,7 @@ function AgentResidualTable({
               <th className="px-3 py-3">Month</th>
               <th className="px-3 py-3">Platform</th>
               <th className="px-3 py-3">Status</th>
-              <th className="px-3 py-3">Agent Commission Structure</th>
+              <th className="px-3 py-3 text-right">Agent CC Split</th>
               <th className="px-3 py-3 text-right">Merchant Sales Volume</th>
               <th className="px-3 py-3 text-right">Agent Residual</th>
               <th className="px-4 py-3 text-right">Equipment Cost</th>
@@ -456,7 +474,7 @@ function AgentResidualTable({
                 <td className="px-3 py-3">{row.month}</td>
                 <td className="px-3 py-3">{row.platform}</td>
                 <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-                <td className="px-3 py-3">{row.agentCommissionStructure}</td>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums">{splitLabel(row.agentSplit)}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{wholeCurrency(row.salesVolume)}</td>
                 <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(ccResidual(row))}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>

@@ -8,6 +8,7 @@ import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
+import { adminAccountSplitPercent, hasSecondaryAgent, splitAmount, splitLabel, splitPercentFromText } from "@/lib/portal/agentSplits";
 import { portalFileRequest, portalRequest } from "@/lib/portal/client";
 import type { ParsedResidualImport, ParsedResidualImportRow } from "@/lib/portal/residualImport";
 import { inferredResidualPlatformType, type ResidualPlatformType } from "@/lib/portal/residualType";
@@ -97,6 +98,7 @@ type ResidualReportRow = {
   agentCommissionStructure: string;
   agentId: string;
   agentProfit: number;
+  agentSplit: number;
   equipmentCost: number;
   greenhubNetProfit: number;
   greenhubPobBuyRate: number;
@@ -117,6 +119,7 @@ type ResidualReportRow = {
   residualId: string | null;
   residualType: ResidualPlatformType;
   salesVolume: number;
+  secondaryAgentId: string | null;
   status: "draft" | "finalized";
   surcharge: number;
   transactionsPerMonth: number;
@@ -287,6 +290,26 @@ function withPobCalculations(form: ResidualForm, changedField?: keyof ResidualFo
   };
 }
 
+function withCcCalculations(form: ResidualForm, changedField?: keyof ResidualForm) {
+  if (changedField === "agentProfit") return form;
+
+  const greenhubNetProfit = amount(form.netProfit);
+  const agentSplit = splitPercentFromText(form.agentCommissionStructure, 100);
+
+  return {
+    ...form,
+    agentProfit: greenhubNetProfit ? inputAmount(splitAmount(greenhubNetProfit, agentSplit)) : form.agentProfit,
+  };
+}
+
+function withResidualCalculations(
+  form: ResidualForm,
+  residualType: ResidualPlatformType,
+  changedField?: keyof ResidualForm
+) {
+  return residualType === "pob" ? withPobCalculations(form, changedField) : withCcCalculations(form, changedField);
+}
+
 function calculatedPobField(field: keyof ResidualForm) {
   return field === "transactionsPerMonth" ||
     field === "greenhubPobBuyRate" ||
@@ -295,6 +318,10 @@ function calculatedPobField(field: keyof ResidualForm) {
     field === "rebate" ||
     field === "surcharge" ||
     field === "greenhubPobProfitPerTransaction";
+}
+
+function calculatedCcField(field: keyof ResidualForm) {
+  return field === "agentCommissionStructure" || field === "netProfit";
 }
 
 function buildResidualPayload(
@@ -621,7 +648,7 @@ function AdminResidualsContent() {
       residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, platformId)) ??
       residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, ""));
 
-    const entry = withPobCalculations({
+    const entry = withResidualCalculations({
       ...base,
       agentCommissionStructure:
         baseline?.agent_commission_structure ||
@@ -645,7 +672,7 @@ function AdminResidualsContent() {
       rebate: rowInputAmount(amount(baseline?.rebate)),
       surcharge: rowInputAmount(amount(baseline?.surcharge)),
       transactionsPerMonth: "",
-    });
+    }, residualTypeForPlatformId(platformId));
 
     return { entry, residualId: null };
   }
@@ -694,7 +721,10 @@ function AdminResidualsContent() {
     setForm((current) => {
       if (field !== "merchantAccountId") {
         const next = { ...current, [field]: value };
-        return calculatedPobField(field) ? withPobCalculations(next, field) : next;
+        const nextType = next.platformId ? residualTypeForPlatformId(next.platformId) : residualEntryType;
+        if (nextType === "pob" && calculatedPobField(field)) return withPobCalculations(next, field);
+        if (nextType === "cc" && calculatedCcField(field)) return withCcCalculations(next, field);
+        return next;
       }
 
       const account = data?.accounts.find((item) => item.id === value);
@@ -736,7 +766,7 @@ function AdminResidualsContent() {
     const baseline = row.baselineResidual;
     const importedOrBaseline = (importedValue: string, baselineValue: number | string | null | undefined) =>
       importedValue || rowInputAmount(amount(baselineValue));
-    const entry = withPobCalculations({
+    const entry = withResidualCalculations({
       ...initialForm,
       agentCommissionStructure:
         row.agentCommissionStructure ||
@@ -765,7 +795,7 @@ function AdminResidualsContent() {
       surcharge: importedOrBaseline(row.surcharge, baseline?.surcharge),
       transactionsPerMonth: ccEntry ? "" : row.transactionsPerMonth,
       year: importYear,
-    });
+    }, platformType);
 
     return buildResidualPayload(entry, platformType, importStatus);
   }
@@ -808,7 +838,11 @@ function AdminResidualsContent() {
   }
 
   function apiPayload(nextStatus: ResidualForm["status"]) {
-    return buildResidualPayload(form, residualEntryType, nextStatus);
+    return buildResidualPayload(
+      withResidualCalculations(form, residualEntryType),
+      residualEntryType,
+      nextStatus
+    );
   }
 
   async function persistResidual(nextStatus: ResidualForm["status"]) {
@@ -1041,15 +1075,39 @@ function AdminResidualsContent() {
         account ?? data?.accounts.find((item) => item.id === residual.merchant_account_id) ?? null;
       const platformId = residual.platform_id ?? rowAccount?.platform_id ?? "";
       const agentId = residual.agent_id || rowAccount?.assigned_agent_id || "";
+      const secondaryAgentId = rowAccount?.secondary_agent_id ?? null;
+      const residualType = residualTypeForPlatformId(platformId);
+      const agentSplit = adminAccountSplitPercent({
+        account: rowAccount,
+        fallbackCommission: residual.agent_commission_structure || rowAccount?.commission_structure,
+        reportAgent,
+        residualType,
+      });
+      const rawAgentProfit = amount(residual.agent_profit);
+      const agentProfit =
+        residualType === "cc"
+          ? splitAmount(amount(residual.greenhub_net_profit), agentSplit)
+          : reportAgent !== "all" && hasSecondaryAgent(rowAccount)
+            ? splitAmount(rawAgentProfit, agentSplit)
+            : rawAgentProfit;
+      const displayAgentId = reportAgent !== "all" ? reportAgent : agentId;
+      const primaryAgentName = agentNames.get(agentId) ?? "Unknown agent";
+      const secondaryAgentName = secondaryAgentId ? agentNames.get(secondaryAgentId) : null;
 
       return {
-        agent: agentNames.get(agentId) ?? "Unknown agent",
+        agent:
+          reportAgent !== "all"
+            ? agentNames.get(displayAgentId) ?? primaryAgentName
+            : secondaryAgentName
+              ? `${primaryAgentName} + ${secondaryAgentName}`
+              : primaryAgentName,
         agentCommissionStructure:
           residual.agent_commission_structure ||
           rowAccount?.commission_structure ||
           "Not specified",
         agentId,
-        agentProfit: amount(residual.agent_profit),
+        agentProfit,
+        agentSplit,
         equipmentCost: amount(residual.equipment_cost),
         greenhubNetProfit: amount(residual.greenhub_net_profit),
         greenhubPobBuyRate: amount(residual.greenhub_pob_buy_rate),
@@ -1068,8 +1126,9 @@ function AdminResidualsContent() {
         profitPerTransaction: amount(residual.profit_per_transaction),
         rebate: amount(residual.rebate),
         residualId: residual.id,
-        residualType: residualTypeForPlatformId(platformId),
+        residualType,
         salesVolume: amount(residual.monthly_sales_volume),
+        secondaryAgentId,
         status: residual.residual_status,
         surcharge: amount(residual.surcharge),
         transactionsPerMonth: amount(residual.transactions_per_month),
@@ -1091,6 +1150,7 @@ function AdminResidualsContent() {
       )
       .map((account) => {
         const platformId = account.platform_id ?? "";
+        const residualType = residualTypeForPlatformId(platformId);
         const residual =
           residualsByAccountPeriod.get(residualKey(account.id, platformId, selectedReportPeriod.value)) ??
           residualsByAccountPeriod.get(residualKey(account.id, "", selectedReportPeriod.value));
@@ -1098,17 +1158,32 @@ function AdminResidualsContent() {
         if (residual) return rowFromResidual(residual, account);
 
         const agentId = account.assigned_agent_id ?? "";
+        const secondaryAgentId = account.secondary_agent_id ?? null;
         const baseline =
           residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, platformId)) ??
           residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, ""));
+        const agentSplit = adminAccountSplitPercent({
+          account,
+          fallbackCommission: baseline?.agent_commission_structure || account.commission_structure,
+          reportAgent,
+          residualType,
+        });
+        const primaryAgentName = agentNames.get(agentId) ?? "Unassigned";
+        const secondaryAgentName = secondaryAgentId ? agentNames.get(secondaryAgentId) : null;
 
         return {
-          agent: agentNames.get(agentId) ?? "Unassigned",
+          agent:
+            reportAgent !== "all"
+              ? agentNames.get(reportAgent) ?? primaryAgentName
+              : secondaryAgentName
+                ? `${primaryAgentName} + ${secondaryAgentName}`
+                : primaryAgentName,
           agentCommissionStructure:
             baseline?.agent_commission_structure ||
             account.commission_structure ||
             "Not specified",
           agentId,
+          agentSplit,
           agentProfit: 0,
           equipmentCost: amount(baseline?.equipment_cost),
           greenhubNetProfit: 0,
@@ -1128,8 +1203,9 @@ function AdminResidualsContent() {
           profitPerTransaction: amount(baseline?.profit_per_transaction),
           rebate: amount(baseline?.rebate),
           residualId: null,
-          residualType: residualTypeForPlatformId(platformId),
+          residualType,
           salesVolume: 0,
+          secondaryAgentId,
           status: "draft" as const,
           surcharge: amount(baseline?.surcharge),
           transactionsPerMonth: 0,
@@ -1141,6 +1217,7 @@ function AdminResidualsContent() {
     data,
     platformNames,
     platformTypes,
+    reportAgent,
     reportView,
     residualsByAccountPeriod,
     residualBaselinesByAccountPlatform,
@@ -1153,7 +1230,7 @@ function AdminResidualsContent() {
   const reportRows = data ? liveReportRows : previewReportRows;
   const filteredReportRows = reportRows.filter(
     (row) =>
-      (reportAgent === "all" || row.agentId === reportAgent) &&
+      (reportAgent === "all" || row.agentId === reportAgent || row.secondaryAgentId === reportAgent) &&
       (reportMonth === "all" || row.monthValue === reportMonth) &&
       (reportStatus === "all" || row.status === reportStatus)
   );
@@ -1918,6 +1995,9 @@ function ResidualSummary({
             { label: "Equipment Cost", value: currency(totals.equipmentCost) },
           ]
         : [
+            { label: "GreenHub POB Net Residual", value: currency(totals.greenhubPobNetProfit) },
+            { label: "GreenHub CC Net Residual", value: currency(totals.greenhubNetProfit) },
+            { label: "Total GreenHub Net Residual", value: currency(totals.totalGreenhubNetResidual) },
             { label: "POB Agent Residual", value: currency(totals.pobAgentResidual) },
             { label: "CC Agent Residual", value: currency(totals.ccAgentResidual) },
             { label: "Total Agent Residual", value: currency(totals.agentProfit) },
@@ -2129,7 +2209,7 @@ function ResidualReportTable({
               <th className="px-3 py-3">Agent</th>
               <th className="px-3 py-3">Platform</th>
               <th className="px-3 py-3">Status</th>
-              <th className="px-3 py-3">Agent Commission Structure</th>
+              <th className="px-3 py-3 text-right">Agent CC Split</th>
               <th className="px-3 py-3 text-right">Merchant Sales Volume</th>
               <th className="px-3 py-3 text-right">GreenHub Net Profit</th>
               <th className="px-3 py-3 text-right">Agent Residual</th>
@@ -2145,7 +2225,7 @@ function ResidualReportTable({
                 <td className="px-3 py-3">{row.agent}</td>
                 <td className="px-3 py-3">{row.platform}</td>
                 <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-                <td className="px-3 py-3">{row.agentCommissionStructure}</td>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums">{splitLabel(row.agentSplit)}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{currency(row.salesVolume)}</td>
                 <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.greenhubNetProfit)}</td>
                 <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
@@ -2247,6 +2327,8 @@ function totalResiduals(rows: ResidualReportRow[]) {
       equipmentCost: totals.equipmentCost + row.equipmentCost,
       greenhubNetProfit: totals.greenhubNetProfit + row.greenhubNetProfit,
       greenhubPobNetProfit: totals.greenhubPobNetProfit + row.greenhubPobNetProfit,
+      totalGreenhubNetResidual:
+        totals.totalGreenhubNetResidual + row.greenhubNetProfit + row.greenhubPobNetProfit,
       ccAgentResidual: totals.ccAgentResidual + ccAgentResidual(row),
       pobAgentResidual: totals.pobAgentResidual + pobAgentResidual(row),
       salesVolume: totals.salesVolume + row.salesVolume,
@@ -2260,6 +2342,7 @@ function totalResiduals(rows: ResidualReportRow[]) {
       equipmentCost: 0,
       greenhubNetProfit: 0,
       greenhubPobNetProfit: 0,
+      totalGreenhubNetResidual: 0,
       pobAgentResidual: 0,
       salesVolume: 0,
       transactionsPerMonth: 0,
@@ -2302,6 +2385,7 @@ function demoReportRow(row: DemoResidualRow): ResidualReportRow {
     agentCommissionStructure: row.agentCommissionStructure,
     agentId: row.agentId,
     agentProfit: amount(row.agentProfit),
+    agentSplit: splitPercentFromText(row.agentCommissionStructure, 100),
     equipmentCost: amount(row.equipment),
     greenhubNetProfit: amount(row.netProfit),
     greenhubPobBuyRate: amount(row.greenhubPobBuyRate),
@@ -2322,6 +2406,7 @@ function demoReportRow(row: DemoResidualRow): ResidualReportRow {
     residualId: null,
     residualType: inferredResidualPlatformType(row.platform),
     salesVolume: amount(row.volume),
+    secondaryAgentId: null,
     status: row.status.toLowerCase() as "draft" | "finalized",
     surcharge: amount(row.surcharge),
     transactionsPerMonth: amount(row.transactions),

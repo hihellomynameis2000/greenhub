@@ -141,6 +141,9 @@ export type MerchantAccount = {
   internal_notes: string | null;
   merchant_application_id: string | null;
   platform_id: string | null;
+  primary_agent_split?: NumericValue;
+  secondary_agent_id?: string | null;
+  secondary_agent_split?: NumericValue;
   status: "active" | "paused" | "closed";
   updated_at: string;
   updated_by: string | null;
