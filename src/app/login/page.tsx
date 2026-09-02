@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { getPortalSupabase, portalRequest } from "@/lib/portal/client";
 
 type AuthStep = "credentials" | "code";
@@ -21,6 +21,7 @@ type TwoFactorVerifyResponse = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const verifyingRef = useRef(false);
   const [accessCopy, setAccessCopy] = useState({
     eyebrow: "Partner portal",
     help: "Secure access for GreenHub administrators, agents, and partners.",
@@ -106,6 +107,9 @@ export default function LoginPage() {
 
   async function handleVerify(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (verifyingRef.current) return;
+
+    verifyingRef.current = true;
     setError("");
     setNotice("");
     setLoading(true);
@@ -119,6 +123,7 @@ export default function LoginPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed.");
     } finally {
+      verifyingRef.current = false;
       setLoading(false);
     }
   }
