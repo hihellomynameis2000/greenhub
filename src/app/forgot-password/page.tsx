@@ -62,9 +62,7 @@ export default function ForgotPasswordPage() {
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">Reset your password</h1>
           <p className="mt-2 text-sm leading-6 text-slate-700">
-            {isAdminHost
-              ? "Enter your administrator email and we will send a secure password link."
-              : "Enter your agent email and we will send a secure password link."}
+            Enter your portal email and we will send the correct secure password link.
           </p>
         </div>
 
@@ -91,19 +89,6 @@ export default function ForgotPasswordPage() {
           {message ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
               {message}
-            </div>
-          ) : null}
-
-          {!isAdminHost ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-5 text-slate-700">
-              Administrator reset links must be requested from{" "}
-              <a
-                href="https://admin.greenhub.io/forgot-password"
-                className="font-semibold text-emerald-800 hover:text-emerald-950"
-              >
-                admin.greenhub.io
-              </a>
-              .
             </div>
           ) : null}
 

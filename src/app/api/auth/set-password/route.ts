@@ -106,11 +106,7 @@ export async function POST(request: NextRequest) {
       throw new PortalApiError("This secure link is invalid or has expired.", 400);
     }
 
-    if (profile.auth_user_id && profile.auth_user_id !== data.user.id) {
-      throw new PortalApiError("This secure link is invalid or has expired.", 400);
-    }
-
-    if (!profile.auth_user_id) {
+    if (profile.auth_user_id !== data.user.id) {
       await supabaseRest("agent_profiles", {
         method: "PATCH",
         query: new URLSearchParams({ id: `eq.${profile.id}` }),
