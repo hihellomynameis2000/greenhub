@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronDown, CreditCard, FileText, Layers3, Lock, ReceiptText, Trash2, Unlock, UploadCloud } from "lucide-react";
+import { Bell, ChevronDown, CreditCard, FileText, Layers3, Lock, Plus, ReceiptText, Trash2, Unlock, UploadCloud } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
@@ -29,7 +29,7 @@ const months = [
   "December",
 ];
 
-const residualsPerPage = 10;
+const residualsPerPage = 50;
 const defaultReportMonth = "2026-7";
 const defaultEntryMonth = "July";
 const defaultEntryYear = "2026";
@@ -407,6 +407,10 @@ function reportRowEditKey(row: ResidualReportRow) {
   return residualKey(row.merchantAccountId, row.platformId, row.monthValue);
 }
 
+function monthlyAccountKey(accountId: string, monthValue: string) {
+  return `${accountId}::${monthValue}`;
+}
+
 function savedAt(value: string) {
   return `Saved ${new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -446,6 +450,9 @@ function AdminResidualsContent() {
   const [importing, setImporting] = useState(false);
   const [rowEdits, setRowEdits] = useState<Record<string, ResidualForm>>({});
   const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
+  const [quickAddAccountId, setQuickAddAccountId] = useState("");
+  const [quickAdding, setQuickAdding] = useState(false);
+  const [hiddenMonthlyRows, setHiddenMonthlyRows] = useState<string[]>([]);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
   const residualFormRef = useRef<HTMLElement>(null);
 
@@ -478,6 +485,26 @@ function AdminResidualsContent() {
   const residualTypeForPlatformId = (platformId: string | null | undefined) =>
     platformTypes.get(platformId ?? "") ??
     inferredResidualPlatformType(platformNames.get(platformId ?? "") ?? "Unassigned");
+  const quickAddAccountOptions = useMemo(() => {
+    const accounts = data?.accounts ?? [];
+
+    return [
+      { disabled: true, label: "Add merchant to this month", value: "" },
+      ...accounts
+        .filter((account) => account.status !== "closed")
+        .filter((account) => reportView === "total" || residualTypeForPlatformId(account.platform_id) === reportView)
+        .sort((left, right) => left.account_name.localeCompare(right.account_name))
+        .map((account) => {
+          const platformName = platformNames.get(account.platform_id ?? "") ?? "Unassigned";
+          const agentName = agentNames.get(account.assigned_agent_id ?? "") ?? "Unassigned";
+
+          return {
+            label: `${account.account_name} - ${platformName} - ${agentName}`,
+            value: account.id,
+          };
+        }),
+    ];
+  }, [agentNames, data?.accounts, platformNames, reportView, residualTypeForPlatformId]);
   const normalizedAccounts = useMemo(
     () =>
       data?.accounts.map((account) => ({
@@ -942,6 +969,11 @@ function AdminResidualsContent() {
   }
 
   async function notifyAgent() {
+    if (!selectedReportPeriod || reportAgent === "all") {
+      setError("Choose one agent and one month before marking residuals complete.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -950,9 +982,9 @@ function AdminResidualsContent() {
         await portalRequest("/api/portal/notifications", {
           method: "POST",
           body: JSON.stringify({
-            agentId: form.agentId,
-            residualMonth: months.indexOf(form.month) + 1,
-            residualYear: form.year,
+            agentId: reportAgent,
+            residualMonth: selectedReportPeriod.month,
+            residualYear: selectedReportPeriod.year,
           }),
         });
         await refresh();
@@ -1013,7 +1045,11 @@ function AdminResidualsContent() {
 
       return {
         ...current,
-        [key]: calculatedPobField(field) ? withPobCalculations(next, field) : next,
+        [key]:
+          (row.residualType === "pob" && calculatedPobField(field)) ||
+          (row.residualType === "cc" && calculatedCcField(field))
+            ? withResidualCalculations(next, row.residualType, field)
+            : next,
       };
     });
   }
@@ -1025,7 +1061,7 @@ function AdminResidualsContent() {
     }
 
     const key = reportRowEditKey(row);
-    const entry = withPobCalculations(rowEdits[key] ?? formFromReportRow(row));
+    const entry = withResidualCalculations(rowEdits[key] ?? formFromReportRow(row), row.residualType);
 
     setSavingRowKey(key);
     setError(null);
@@ -1050,6 +1086,118 @@ function AdminResidualsContent() {
       });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "The residual row could not be saved.");
+    } finally {
+      setSavingRowKey(null);
+    }
+  }
+
+  async function quickAddResidualAccount() {
+    if (!data) {
+      setError("Sign in is required before adding a residual row.");
+      return;
+    }
+
+    if (!selectedReportPeriod) {
+      setError("Choose a single month before adding an account to residuals.");
+      return;
+    }
+
+    const account = data.accounts.find((item) => item.id === quickAddAccountId);
+    if (!account) {
+      setError("Choose a merchant account to add.");
+      return;
+    }
+
+    const platformId = account.platform_id ?? "";
+    const residualType = residualTypeForPlatformId(platformId);
+    const { entry, residualId } = formForAccountPeriod(
+      {
+        ...initialForm,
+        month: months[selectedReportPeriod.month - 1] ?? defaultEntryMonth,
+        status: "draft",
+        year: selectedReportPeriod.year,
+      },
+      account
+    );
+
+    if (residualId) {
+      setHiddenMonthlyRows((current) =>
+        current.filter((key) => key !== monthlyAccountKey(account.id, selectedReportPeriod.value))
+      );
+      setQuickAddAccountId("");
+      showPortalToast({
+        title: "Account already listed",
+        message: `${account.account_name} already has a residual row for ${selectedReportPeriod.label}.`,
+      });
+      return;
+    }
+
+    setQuickAdding(true);
+    setError(null);
+
+    try {
+      await portalRequest<{ residual: MonthlyResidual }>("/api/portal/residuals", {
+        method: "POST",
+        body: JSON.stringify(buildResidualPayload(withResidualCalculations(entry, residualType), residualType, "draft")),
+      });
+      setHiddenMonthlyRows((current) =>
+        current.filter((key) => key !== monthlyAccountKey(account.id, selectedReportPeriod.value))
+      );
+      setQuickAddAccountId("");
+      setReportView(residualType);
+      setReportStatus("all");
+      setRecentPage(1);
+      await refresh();
+      showPortalToast({
+        title: "Account added",
+        message: `${account.account_name} was added to ${selectedReportPeriod.label}.`,
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The residual row could not be added.");
+    } finally {
+      setQuickAdding(false);
+    }
+  }
+
+  async function removeReportRow(row: ResidualReportRow) {
+    if (!data || !selectedReportPeriod) {
+      setHiddenMonthlyRows((current) => [...new Set([...current, monthlyAccountKey(row.merchantAccountId, row.monthValue)])]);
+      return;
+    }
+
+    if (!row.residualId) {
+      setHiddenMonthlyRows((current) => [...new Set([...current, monthlyAccountKey(row.merchantAccountId, row.monthValue)])]);
+      showPortalToast({
+        title: "Row removed from this month",
+        message: `${row.merchant} is hidden from ${row.month}. The account still exists in Accounts.`,
+      });
+      return;
+    }
+
+    if (row.status !== "draft") {
+      setError("Finalized residual rows cannot be removed. Move it back to draft before removing it.");
+      return;
+    }
+
+    setSavingRowKey(reportRowEditKey(row));
+    setError(null);
+
+    try {
+      await portalRequest(`/api/portal/residuals?id=${encodeURIComponent(row.residualId)}`, {
+        method: "DELETE",
+      });
+      setRowEdits((current) => {
+        const next = { ...current };
+        delete next[reportRowEditKey(row)];
+        return next;
+      });
+      await refresh();
+      showPortalToast({
+        title: "Residual row removed",
+        message: `${row.merchant} was removed from ${row.month}. The account still exists in Accounts.`,
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The residual row could not be removed.");
     } finally {
       setSavingRowKey(null);
     }
@@ -1210,11 +1358,13 @@ function AdminResidualsContent() {
           surcharge: amount(baseline?.surcharge),
           transactionsPerMonth: 0,
         };
-      });
+      })
+      .filter((row) => row.hasResidual || !hiddenMonthlyRows.includes(monthlyAccountKey(row.merchantAccountId, row.monthValue)));
   }, [
     accountNames,
     agentNames,
     data,
+    hiddenMonthlyRows,
     platformNames,
     platformTypes,
     reportAgent,
@@ -1389,7 +1539,13 @@ function AdminResidualsContent() {
         ) : null}
       </section>
 
-      <section ref={residualFormRef} className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
+      {error ? (
+        <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+          {error}
+        </div>
+      ) : null}
+
+      <section ref={residualFormRef} className="hidden">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Add Monthly Residual Entry</h2>
@@ -1737,6 +1893,31 @@ function AdminResidualsContent() {
               />
             </div>
           </div>
+          <div className="mt-5 flex flex-col gap-3 rounded-lg border border-slate-300 bg-slate-50 p-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">Add merchant to monthly residuals</p>
+              <p className="mt-0.5 text-xs text-slate-600">
+                Adds a draft row for the selected month without changing the saved merchant account.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[minmax(280px,1fr)_auto] lg:min-w-[620px]">
+              <PortalSelect
+                ariaLabel="Add merchant account to selected residual month"
+                value={quickAddAccountId}
+                onValueChange={setQuickAddAccountId}
+                options={quickAddAccountOptions}
+              />
+              <button
+                type="button"
+                disabled={quickAdding || !quickAddAccountId || !selectedReportPeriod}
+                onClick={() => void quickAddResidualAccount()}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                {quickAdding ? "Adding..." : `Add to ${selectedReportPeriod?.label ?? "month"}`}
+              </button>
+            </div>
+          </div>
           <div className="mt-5 grid gap-3 xl:grid-cols-3">
             {residualReportViews.map(({ description, icon: Icon, id, label }) => {
               const active = reportView === id;
@@ -1794,7 +1975,7 @@ function AdminResidualsContent() {
           rows={paginatedReportRows}
           view={reportView}
           pobFieldsLocked={pobFieldsLocked}
-          onEditRow={loadReportRow}
+          onRemoveRow={(row) => void removeReportRow(row)}
           onSaveRow={(row) => void saveReportRow(row)}
           onUpdateRow={updateReportRow}
           rowEdits={rowEdits}
@@ -2041,7 +2222,7 @@ function QuickResidualInput({
 }
 
 function ResidualReportTable({
-  onEditRow,
+  onRemoveRow,
   onSaveRow,
   onUpdateRow,
   pobFieldsLocked,
@@ -2050,7 +2231,7 @@ function ResidualReportTable({
   savingRowKey,
   view,
 }: {
-  onEditRow: (row: ResidualReportRow) => void;
+  onRemoveRow: (row: ResidualReportRow) => void;
   onSaveRow: (row: ResidualReportRow) => void;
   onUpdateRow: (row: ResidualReportRow, field: keyof ResidualForm, value: string) => void;
   pobFieldsLocked: boolean;
@@ -2182,10 +2363,12 @@ function ResidualReportTable({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onEditRow(row)}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition-colors hover:bg-slate-100"
+                        disabled={saving || (row.hasResidual && row.status !== "draft")}
+                        onClick={() => onRemoveRow(row)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Open
+                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                        Remove
                       </button>
                     </div>
                   </td>
@@ -2219,21 +2402,85 @@ function ResidualReportTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
-                <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
-                <td className="px-3 py-3">{row.agent}</td>
-                <td className="px-3 py-3">{row.platform}</td>
-                <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-                <td className="px-3 py-3 text-right font-semibold tabular-nums">{splitLabel(row.agentSplit)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{currency(row.salesVolume)}</td>
-                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.greenhubNetProfit)}</td>
-                <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(row.agentProfit)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
-                <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
-                <ResidualRowAction row={row} onEditRow={onEditRow} />
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const key = reportRowEditKey(row);
+              const edit = withResidualCalculations(rowEdits[key] ?? formFromReportRow(row), "cc");
+              const saving = savingRowKey === key;
+
+              return (
+                <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
+                  <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
+                  <td className="px-3 py-3">{row.agent}</td>
+                  <td className="px-3 py-3">{row.platform}</td>
+                  <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
+                  <td className="px-3 py-3 text-right">
+                    <input
+                      aria-label={`${row.merchant} agent CC split`}
+                      value={edit.agentCommissionStructure}
+                      onChange={(event) => onUpdateRow(row, "agentCommissionStructure", event.target.value)}
+                      className="h-9 w-36 rounded-lg border border-slate-300 bg-white px-2 text-right text-xs font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} merchant sales volume`}
+                      value={edit.monthlySalesVolume}
+                      onValueChange={(value) => onUpdateRow(row, "monthlySalesVolume", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} GreenHub net profit`}
+                      value={edit.netProfit}
+                      onValueChange={(value) => onUpdateRow(row, "netProfit", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} agent residual`}
+                      readOnly
+                      value={edit.agentProfit}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} equipment cost`}
+                      value={edit.equipmentCost}
+                      onValueChange={(value) => onUpdateRow(row, "equipmentCost", value)}
+                    />
+                  </td>
+                  <td className="max-w-64 px-3 py-3">
+                    <input
+                      aria-label={`${row.merchant} merchant notes`}
+                      value={edit.merchantNotes}
+                      onChange={(event) => onUpdateRow(row, "merchantNotes", event.target.value)}
+                      className="h-9 w-48 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onSaveRow(row)}
+                        className="rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {saving ? "Saving" : row.hasResidual ? "Save" : "Create"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving || (row.hasResidual && row.status !== "draft")}
+                        onClick={() => onRemoveRow(row)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             <ResidualEmptyRow colSpan={11} rows={rows} />
           </tbody>
         </table>
@@ -2272,7 +2519,7 @@ function ResidualReportTable({
               <td className="px-3 py-3 text-right tabular-nums">{currency(row.equipmentCost)}</td>
               <td className="px-3 py-3 text-right font-semibold tabular-nums">{currency(agentNetResidual(row))}</td>
               <td className="max-w-64 px-3 py-3 text-slate-700">{row.merchantNotes || "-"}</td>
-              <ResidualRowAction row={row} onEditRow={onEditRow} />
+              <ResidualRowAction row={row} onRemoveRow={onRemoveRow} />
             </tr>
           ))}
           <ResidualEmptyRow colSpan={11} rows={rows} />
@@ -2283,20 +2530,22 @@ function ResidualReportTable({
 }
 
 function ResidualRowAction({
-  onEditRow,
+  onRemoveRow,
   row,
 }: {
-  onEditRow: (row: ResidualReportRow) => void;
+  onRemoveRow: (row: ResidualReportRow) => void;
   row: ResidualReportRow;
 }) {
   return (
     <td className="px-3 py-3 text-right">
       <button
         type="button"
-        onClick={() => onEditRow(row)}
-        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition-colors hover:bg-slate-100"
+        disabled={row.hasResidual && row.status !== "draft"}
+        onClick={() => onRemoveRow(row)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {row.hasResidual ? "Edit" : "Add data"}
+        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+        Remove
       </button>
     </td>
   );
