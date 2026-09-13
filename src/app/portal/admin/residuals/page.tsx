@@ -824,7 +824,11 @@ function AdminResidualsContent() {
       year: importYear,
     }, platformType);
 
-    return buildResidualPayload(entry, platformType, importStatus);
+    return {
+      ...buildResidualPayload(entry, platformType, importStatus),
+      sourceIndex: row.sourceIndex,
+      sourceMerchantName: row.merchantName,
+    };
   }
 
   async function importResidualRows() {
@@ -842,7 +846,13 @@ function AdminResidualsContent() {
     setError(null);
 
     try {
-      const result = await portalRequest<{ created: number; imported: number; updated: number }>(
+      const result = await portalRequest<{
+        created: number;
+        errors?: Array<{ merchantName: string | null; row: number | null }>;
+        imported: number;
+        requested?: number;
+        updated: number;
+      }>(
         "/api/portal/residuals/import",
         {
           method: "POST",
@@ -853,6 +863,17 @@ function AdminResidualsContent() {
         }
       );
       await refresh();
+      if (result.errors?.length) {
+        const failedNames = result.errors
+          .slice(0, 3)
+          .map((row) => row.merchantName || (row.row ? `row ${row.row}` : "one row"))
+          .join(", ");
+        setError(
+          `${result.imported} rows imported. ${result.errors.length} rows could not be saved${
+            failedNames ? `: ${failedNames}` : ""
+          }.`
+        );
+      }
       showPortalToast({
         title: "Residual import complete",
         message: `${result.imported} rows imported. ${result.updated} updated, ${result.created} created.`,
