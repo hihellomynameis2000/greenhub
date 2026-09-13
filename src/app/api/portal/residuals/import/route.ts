@@ -19,7 +19,7 @@ type ImportError = {
 
 function residualMatchQuery(payload: ReturnType<typeof residualPayload>) {
   return new URLSearchParams({
-    limit: "1",
+    limit: "20",
     merchant_account_id: `eq.${payload.merchant_account_id}`,
     order: "created_at.desc",
     residual_month: `eq.${payload.residual_month}`,

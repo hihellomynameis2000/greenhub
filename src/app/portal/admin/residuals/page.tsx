@@ -411,6 +411,17 @@ function monthlyAccountKey(accountId: string, monthValue: string) {
   return `${accountId}::${monthValue}`;
 }
 
+function dedupeMonthlyRows(rows: ResidualReportRow[]) {
+  const seen = new Set<string>();
+
+  return rows.filter((row) => {
+    const key = monthlyAccountKey(row.merchantAccountId, row.monthValue);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function savedAt(value: string) {
   return `Saved ${new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -492,19 +503,19 @@ function AdminResidualsContent() {
       { disabled: true, label: "Add merchant to this month", value: "" },
       ...accounts
         .filter((account) => account.status !== "closed")
-        .filter((account) => reportView === "total" || residualTypeForPlatformId(account.platform_id) === reportView)
         .sort((left, right) => left.account_name.localeCompare(right.account_name))
         .map((account) => {
           const platformName = platformNames.get(account.platform_id ?? "") ?? "Unassigned";
           const agentName = agentNames.get(account.assigned_agent_id ?? "") ?? "Unassigned";
+          const type = residualTypeForPlatformId(account.platform_id).toUpperCase();
 
           return {
-            label: `${account.account_name} - ${platformName} - ${agentName}`,
+            label: `${account.account_name} - ${platformName} (${type}) - ${agentName}`,
             value: account.id,
           };
         }),
     ];
-  }, [agentNames, data?.accounts, platformNames, reportView, residualTypeForPlatformId]);
+  }, [agentNames, data?.accounts, platformNames, residualTypeForPlatformId]);
   const normalizedAccounts = useMemo(
     () =>
       data?.accounts.map((account) => ({
@@ -541,9 +552,8 @@ function AdminResidualsContent() {
           (item) => item.name.includes(normalizedMerchant) || normalizedMerchant.includes(item.name)
         )?.account ??
         null;
-      const platform =
-        data?.platforms.find((item) => item.id === (importPlatformId || accountMatch?.platform_id || "")) ??
-        null;
+      const platformId = accountMatch?.platform_id || importPlatformId || "";
+      const platform = data?.platforms.find((item) => item.id === platformId) ?? null;
       const agentName = agentNames.get(accountMatch?.assigned_agent_id ?? "") ?? "";
       const residualType = platformResidualType(platform);
       const baselineResidual = accountMatch
@@ -1245,7 +1255,7 @@ function AdminResidualsContent() {
     function rowFromResidual(residual: MonthlyResidual, account?: MerchantAccount): ResidualReportRow {
       const rowAccount =
         account ?? data?.accounts.find((item) => item.id === residual.merchant_account_id) ?? null;
-      const platformId = residual.platform_id ?? rowAccount?.platform_id ?? "";
+      const platformId = rowAccount?.platform_id ?? residual.platform_id ?? "";
       const agentId = residual.agent_id || rowAccount?.assigned_agent_id || "";
       const secondaryAgentId = rowAccount?.secondary_agent_id ?? null;
       const residualType = residualTypeForPlatformId(platformId);
@@ -1320,6 +1330,7 @@ function AdminResidualsContent() {
         (account) =>
           reportView === "total" || residualTypeForPlatformId(account.platform_id) === reportView
       )
+      .sort((left, right) => left.account_name.localeCompare(right.account_name))
       .map((account) => {
         const platformId = account.platform_id ?? "";
         const residualType = residualTypeForPlatformId(platformId);
@@ -1401,17 +1412,25 @@ function AdminResidualsContent() {
     () => demoResidualRows.map((row) => demoReportRow(row)),
     []
   );
-  const reportRows = data ? liveReportRows : previewReportRows;
+  const reportRows = data ? dedupeMonthlyRows(liveReportRows) : previewReportRows;
   const filteredReportRows = reportRows.filter(
     (row) =>
       (reportAgent === "all" || row.agentId === reportAgent || row.secondaryAgentId === reportAgent) &&
       (reportMonth === "all" || row.monthValue === reportMonth) &&
       (reportStatus === "all" || row.status === reportStatus)
   );
-  const visibleReportRows =
+  const visibleReportRows = (
     reportView === "total"
       ? filteredReportRows
-      : filteredReportRows.filter((row) => row.residualType === reportView);
+      : filteredReportRows.filter((row) => row.residualType === reportView)
+  )
+    .slice()
+    .sort(
+      (left, right) =>
+        left.merchant.localeCompare(right.merchant) ||
+        left.platform.localeCompare(right.platform) ||
+        left.monthValue.localeCompare(right.monthValue)
+    );
   const totalRows = visibleReportRows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / residualsPerPage));
   const activePage = Math.min(recentPage, pageCount);
@@ -1460,11 +1479,11 @@ function AdminResidualsContent() {
             onChange={(event) => setImportYear(event.target.value)}
           />
           <PortalSelect
-            ariaLabel="Import fallback platform"
+            ariaLabel="Fallback platform for accounts without a saved platform"
             value={importPlatformId}
             onValueChange={setImportPlatformId}
             options={[
-              { label: "Use account platform", value: "" },
+              { label: "Use each account's saved platform", value: "" },
               ...platformOptions.filter((option) => option.value),
             ]}
           />
