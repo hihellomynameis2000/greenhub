@@ -1160,13 +1160,15 @@ function AdminResidualsContent() {
   }
 
   async function removeReportRow(row: ResidualReportRow) {
-    if (!data || !selectedReportPeriod) {
-      setHiddenMonthlyRows((current) => [...new Set([...current, monthlyAccountKey(row.merchantAccountId, row.monthValue)])]);
+    const hiddenKey = monthlyAccountKey(row.merchantAccountId, row.monthValue);
+
+    if (!data) {
+      setHiddenMonthlyRows((current) => [...new Set([...current, hiddenKey])]);
       return;
     }
 
     if (!row.residualId) {
-      setHiddenMonthlyRows((current) => [...new Set([...current, monthlyAccountKey(row.merchantAccountId, row.monthValue)])]);
+      setHiddenMonthlyRows((current) => [...new Set([...current, hiddenKey])]);
       showPortalToast({
         title: "Row removed from this month",
         message: `${row.merchant} is hidden from ${row.month}. The account still exists in Accounts.`,
@@ -1191,6 +1193,7 @@ function AdminResidualsContent() {
         delete next[reportRowEditKey(row)];
         return next;
       });
+      setHiddenMonthlyRows((current) => [...new Set([...current, hiddenKey])]);
       await refresh();
       showPortalToast({
         title: "Residual row removed",
