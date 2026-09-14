@@ -6,7 +6,7 @@ import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatfo
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
-import { PortalSelect } from "@/components/portal/PortalSelect";
+import { PortalSelect, type PortalSelectOption } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
 import { adminAccountSplitPercent, hasSecondaryAgent, splitAmount, splitLabel, splitPercentFromText } from "@/lib/portal/agentSplits";
 import { portalFileRequest, portalRequest } from "@/lib/portal/client";
@@ -135,6 +135,23 @@ type ResidualImportPreviewRow = ParsedResidualImportRow & {
   warnings: string[];
 };
 
+type CustomResidualAccountForm = {
+  accountName: string;
+  agentCommissionStructure: string;
+  agentId: string;
+  equipmentCost: string;
+  greenhubPobBuyRate: string;
+  merchantNotes: string;
+  monthlySalesVolume: string;
+  netProfit: string;
+  platformId: string;
+  posIntegrationFee: string;
+  profitPerTransaction: string;
+  rebate: string;
+  surcharge: string;
+  transactionsPerMonth: string;
+};
+
 const initialForm: ResidualForm = {
   agentCommissionStructure: "",
   agentId: "",
@@ -157,6 +174,23 @@ const initialForm: ResidualForm = {
   surcharge: "",
   transactionsPerMonth: "",
   year: defaultEntryYear,
+};
+
+const initialCustomResidualAccountForm: CustomResidualAccountForm = {
+  accountName: "",
+  agentCommissionStructure: "",
+  agentId: "",
+  equipmentCost: "",
+  greenhubPobBuyRate: "",
+  merchantNotes: "",
+  monthlySalesVolume: "",
+  netProfit: "",
+  platformId: "",
+  posIntegrationFee: "",
+  profitPerTransaction: "",
+  rebate: "",
+  surcharge: "",
+  transactionsPerMonth: "",
 };
 
 const demoDrafts: DraftEntry[] = [
@@ -464,6 +498,11 @@ function AdminResidualsContent() {
   const [quickAddAccountId, setQuickAddAccountId] = useState("");
   const [quickAdding, setQuickAdding] = useState(false);
   const [hiddenMonthlyRows, setHiddenMonthlyRows] = useState<string[]>([]);
+  const [customResidualForms, setCustomResidualForms] = useState<Record<ResidualPlatformType, CustomResidualAccountForm>>({
+    cc: { ...initialCustomResidualAccountForm },
+    pob: { ...initialCustomResidualAccountForm },
+  });
+  const [creatingCustomResidualType, setCreatingCustomResidualType] = useState<ResidualPlatformType | null>(null);
   const draftsMenuRef = useRef<HTMLDivElement>(null);
   const residualFormRef = useRef<HTMLElement>(null);
 
@@ -516,6 +555,26 @@ function AdminResidualsContent() {
         }),
     ];
   }, [agentNames, data?.accounts, platformNames, residualTypeForPlatformId]);
+  const customPobPlatformOptions = useMemo(
+    () => [
+      { disabled: true, label: "Select POB platform", value: "" },
+      ...(data?.platforms ?? [])
+        .filter((platform) => platform.is_active !== false && platformResidualType(platform) === "pob")
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((platform) => ({ label: platform.name, value: platform.id })),
+    ],
+    [data?.platforms]
+  );
+  const customCcPlatformOptions = useMemo(
+    () => [
+      { disabled: true, label: "Select CC platform", value: "" },
+      ...(data?.platforms ?? [])
+        .filter((platform) => platform.is_active !== false && platformResidualType(platform) === "cc")
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((platform) => ({ label: platform.name, value: platform.id })),
+    ],
+    [data?.platforms]
+  );
   const normalizedAccounts = useMemo(
     () =>
       data?.accounts.map((account) => ({
@@ -1119,6 +1178,160 @@ function AdminResidualsContent() {
       setError(requestError instanceof Error ? requestError.message : "The residual row could not be saved.");
     } finally {
       setSavingRowKey(null);
+    }
+  }
+
+  function setCustomResidualField(
+    type: ResidualPlatformType,
+    field: keyof CustomResidualAccountForm,
+    value: string
+  ) {
+    setCustomResidualForms((current) => ({
+      ...current,
+      [type]: {
+        ...current[type],
+        [field]: value,
+      },
+    }));
+  }
+
+  async function createCustomResidualAccount(type: ResidualPlatformType) {
+    if (!data) {
+      setError("Sign in is required before adding a custom residual account.");
+      return;
+    }
+
+    if (!selectedReportPeriod) {
+      setError("Choose a single month before adding a custom residual account.");
+      return;
+    }
+
+    const custom = customResidualForms[type];
+    const accountName = custom.accountName.trim();
+
+    if (!accountName) {
+      setError("Custom account name is required.");
+      return;
+    }
+
+    if (!custom.agentId) {
+      setError("Choose an agent for the custom residual account.");
+      return;
+    }
+
+    if (!custom.platformId) {
+      setError(`Choose a ${type.toUpperCase()} platform for the custom residual account.`);
+      return;
+    }
+
+    const normalizedName = normalizedLookupName(accountName);
+    const existingAccount = data.accounts.find(
+      (account) =>
+        normalizedLookupName(account.account_name) === normalizedName &&
+        account.platform_id === custom.platformId
+    );
+
+    setCreatingCustomResidualType(type);
+    setError(null);
+
+    try {
+      const account = existingAccount
+        ? existingAccount
+        : (
+            await portalRequest<{ account: MerchantAccount }>("/api/portal/accounts", {
+              method: "POST",
+              body: JSON.stringify({
+                accountName,
+                assignedAgentId: custom.agentId,
+                commissionStructure: custom.agentCommissionStructure,
+                internalNotes: custom.merchantNotes || "Created from residual portal custom add-on.",
+                platformId: custom.platformId,
+                primaryAgentSplit: "100",
+                secondaryAgentId: "",
+                secondaryAgentSplit: "0",
+                status: "active",
+              }),
+            })
+          ).account;
+      const existingResidual =
+        residualsByAccountPeriod.get(
+          residualKey(account.id, custom.platformId, selectedReportPeriod.value)
+        ) ??
+        residualsByAccountPeriod.get(residualKey(account.id, "", selectedReportPeriod.value));
+
+      if (existingResidual) {
+        setHiddenMonthlyRows((current) =>
+          current.filter((key) => key !== monthlyAccountKey(account.id, selectedReportPeriod.value))
+        );
+        setCustomResidualForms((current) => ({
+          ...current,
+          [type]: { ...initialCustomResidualAccountForm },
+        }));
+        setReportAgent(custom.agentId);
+        setReportMonth(selectedReportPeriod.value);
+        setReportStatus("all");
+        setReportView(type);
+        setRecentPage(1);
+        showPortalToast({
+          title: "Account already listed",
+          message: `${accountName} already has a residual row for ${selectedReportPeriod.label}.`,
+        });
+        return;
+      }
+
+      const entry = withResidualCalculations(
+        {
+          ...initialForm,
+          agentCommissionStructure: custom.agentCommissionStructure,
+          agentId: custom.agentId,
+          equipmentCost: custom.equipmentCost,
+          greenhubPobBuyRate: type === "pob" ? custom.greenhubPobBuyRate : "",
+          merchantAccountId: account.id,
+          merchantNotes: custom.merchantNotes,
+          month: months[selectedReportPeriod.month - 1] ?? defaultEntryMonth,
+          monthlySalesVolume: type === "cc" ? custom.monthlySalesVolume : "",
+          netProfit: type === "cc" ? custom.netProfit : "",
+          platformId: custom.platformId,
+          posIntegrationFee: type === "pob" ? custom.posIntegrationFee : "",
+          profitPerTransaction: type === "pob" ? custom.profitPerTransaction : "",
+          rebate: type === "pob" ? custom.rebate : "",
+          status: "draft",
+          surcharge: type === "pob" ? custom.surcharge : "",
+          transactionsPerMonth: type === "pob" ? custom.transactionsPerMonth : "",
+          year: selectedReportPeriod.year,
+        },
+        type
+      );
+
+      await portalRequest<{ residual: MonthlyResidual }>("/api/portal/residuals", {
+        method: "POST",
+        body: JSON.stringify(buildResidualPayload(entry, type, "draft")),
+      });
+      setHiddenMonthlyRows((current) =>
+        current.filter((key) => key !== monthlyAccountKey(account.id, selectedReportPeriod.value))
+      );
+      setCustomResidualForms((current) => ({
+        ...current,
+        [type]: { ...initialCustomResidualAccountForm },
+      }));
+      setReportAgent(custom.agentId);
+      setReportMonth(selectedReportPeriod.value);
+      setReportStatus("all");
+      setReportView(type);
+      setRecentPage(1);
+      await refresh();
+      showPortalToast({
+        title: `${type.toUpperCase()} account added`,
+        message: `${accountName} was added to ${selectedReportPeriod.label}.`,
+      });
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The custom residual account could not be added."
+      );
+    } finally {
+      setCreatingCustomResidualType(null);
     }
   }
 
@@ -2032,6 +2245,44 @@ function AdminResidualsContent() {
           onPageChange={setRecentPage}
         />
       </section>
+
+      <section className="mt-6 rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Custom Residual Account Add-On</h2>
+            <p className="mt-1 text-sm text-slate-700">
+              Add a merchant directly into the selected month without opening Accounts first.
+            </p>
+          </div>
+          <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+            {selectedReportPeriod?.label ?? "Choose one month"}
+          </span>
+        </div>
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          <CustomResidualAccountCard
+            type="pob"
+            title="POB Residual Custom Account"
+            form={customResidualForms.pob}
+            agentOptions={agentOptions}
+            platformOptions={customPobPlatformOptions}
+            disabled={!selectedReportPeriod || creatingCustomResidualType !== null}
+            saving={creatingCustomResidualType === "pob"}
+            onFieldChange={(field, value) => setCustomResidualField("pob", field, value)}
+            onSubmit={() => void createCustomResidualAccount("pob")}
+          />
+          <CustomResidualAccountCard
+            type="cc"
+            title="CC Residual Custom Account"
+            form={customResidualForms.cc}
+            agentOptions={agentOptions}
+            platformOptions={customCcPlatformOptions}
+            disabled={!selectedReportPeriod || creatingCustomResidualType !== null}
+            saving={creatingCustomResidualType === "cc"}
+            onFieldChange={(field, value) => setCustomResidualField("cc", field, value)}
+            onSubmit={() => void createCustomResidualAccount("cc")}
+          />
+        </div>
+      </section>
     </>
   );
 }
@@ -2181,6 +2432,204 @@ function ResidualSectionLabel({
       <p className="text-sm font-semibold text-slate-900">{title}</p>
       <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
     </div>
+  );
+}
+
+function CustomResidualAccountCard({
+  agentOptions,
+  disabled,
+  form,
+  onFieldChange,
+  onSubmit,
+  platformOptions,
+  saving,
+  title,
+  type,
+}: {
+  agentOptions: PortalSelectOption[];
+  disabled: boolean;
+  form: CustomResidualAccountForm;
+  onFieldChange: (field: keyof CustomResidualAccountForm, value: string) => void;
+  onSubmit: () => void;
+  platformOptions: PortalSelectOption[];
+  saving: boolean;
+  title: string;
+  type: ResidualPlatformType;
+}) {
+  const isPob = type === "pob";
+  const submitDisabled = disabled || saving || !form.accountName.trim() || !form.agentId || !form.platformId;
+
+  return (
+    <div className="rounded-lg border border-slate-300 bg-slate-50 p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+          {type.toUpperCase()}
+        </span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <ResidualFieldShell label="Merchant name">
+          <input
+            className={portalInputClass}
+            disabled={disabled}
+            placeholder="Type account name"
+            value={form.accountName}
+            onChange={(event) => onFieldChange("accountName", event.target.value)}
+          />
+        </ResidualFieldShell>
+        <ResidualFieldShell label="Agent">
+          <PortalSelect
+            disabled={disabled}
+            value={form.agentId}
+            onValueChange={(value) => onFieldChange("agentId", value)}
+            options={[{ disabled: true, label: "Select agent", value: "" }, ...agentOptions]}
+          />
+        </ResidualFieldShell>
+        <ResidualFieldShell label="Platform">
+          <PortalSelect
+            disabled={disabled}
+            value={form.platformId}
+            onValueChange={(value) => onFieldChange("platformId", value)}
+            options={platformOptions}
+          />
+        </ResidualFieldShell>
+        <ResidualFieldShell label={isPob ? "Commission / split notes" : "Agent CC split"}>
+          <input
+            className={portalInputClass}
+            disabled={disabled}
+            placeholder={isPob ? "50% over $1.35 buy rate" : "80%"}
+            value={form.agentCommissionStructure}
+            onChange={(event) => onFieldChange("agentCommissionStructure", event.target.value)}
+          />
+        </ResidualFieldShell>
+        {isPob ? (
+          <>
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="greenhubPobBuyRate"
+              label="POB buy rate"
+              onFieldChange={onFieldChange}
+            />
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="surcharge"
+              label="Surcharge"
+              onFieldChange={onFieldChange}
+            />
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="rebate"
+              label="Rebate to merchant"
+              onFieldChange={onFieldChange}
+            />
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="posIntegrationFee"
+              label="POS integration fee"
+              onFieldChange={onFieldChange}
+            />
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="profitPerTransaction"
+              label="Agent profit / transaction"
+              onFieldChange={onFieldChange}
+            />
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="transactionsPerMonth"
+              label="Transactions"
+              onFieldChange={onFieldChange}
+            />
+          </>
+        ) : (
+          <>
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="monthlySalesVolume"
+              label="Merchant sales volume"
+              onFieldChange={onFieldChange}
+            />
+            <CustomResidualInput
+              disabled={disabled}
+              form={form}
+              field="netProfit"
+              label="GreenHub net profit"
+              onFieldChange={onFieldChange}
+            />
+          </>
+        )}
+        <CustomResidualInput
+          disabled={disabled}
+          form={form}
+          field="equipmentCost"
+          label="Equipment cost"
+          onFieldChange={onFieldChange}
+        />
+        <ResidualFieldShell label="Merchant notes">
+          <input
+            className={portalInputClass}
+            disabled={disabled}
+            placeholder="Optional"
+            value={form.merchantNotes}
+            onChange={(event) => onFieldChange("merchantNotes", event.target.value)}
+          />
+        </ResidualFieldShell>
+      </div>
+      <button
+        type="button"
+        disabled={submitDisabled}
+        onClick={onSubmit}
+        className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <Plus aria-hidden="true" className="h-4 w-4" />
+        {saving ? "Adding..." : `Add ${type.toUpperCase()} Account`}
+      </button>
+    </div>
+  );
+}
+
+function CustomResidualInput({
+  disabled,
+  field,
+  form,
+  label,
+  onFieldChange,
+}: {
+  disabled: boolean;
+  field: keyof Pick<
+    CustomResidualAccountForm,
+    | "equipmentCost"
+    | "greenhubPobBuyRate"
+    | "monthlySalesVolume"
+    | "netProfit"
+    | "posIntegrationFee"
+    | "profitPerTransaction"
+    | "rebate"
+    | "surcharge"
+    | "transactionsPerMonth"
+  >;
+  form: CustomResidualAccountForm;
+  label: string;
+  onFieldChange: (field: keyof CustomResidualAccountForm, value: string) => void;
+}) {
+  return (
+    <ResidualFieldShell label={label}>
+      <input
+        className={portalInputClass}
+        disabled={disabled}
+        inputMode="decimal"
+        placeholder={label}
+        value={form[field]}
+        onChange={(event) => onFieldChange(field, event.target.value)}
+      />
+    </ResidualFieldShell>
   );
 }
 
