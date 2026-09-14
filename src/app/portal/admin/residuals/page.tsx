@@ -344,6 +344,18 @@ function withResidualCalculations(
   return residualType === "pob" ? withPobCalculations(form, changedField) : withCcCalculations(form, changedField);
 }
 
+function greenhubCcSplitPercent(agentCommissionStructure: string | null | undefined) {
+  return Math.min(Math.max(100 - splitPercentFromText(agentCommissionStructure, 100), 0), 100);
+}
+
+function greenhubCcSplitPercentForAgentSplit(agentSplit: number) {
+  return Math.min(Math.max(100 - agentSplit, 0), 100);
+}
+
+function ccGreenhubNetProfitFromForm(form: Pick<ResidualForm, "agentCommissionStructure" | "netProfit">) {
+  return splitAmount(amount(form.netProfit), greenhubCcSplitPercent(form.agentCommissionStructure));
+}
+
 function calculatedPobField(field: keyof ResidualForm) {
   return field === "transactionsPerMonth" ||
     field === "greenhubPobBuyRate" ||
@@ -1971,7 +1983,7 @@ function AdminResidualsContent() {
                 description="Card-processing monthly values for the selected merchant and reporting month."
               />
               <ResidualInput label="Monthly Sales Volume" field="monthlySalesVolume" form={form} updateForm={updateForm} />
-              <ResidualInput label="GreenHub Net Profit" field="netProfit" form={form} updateForm={updateForm} />
+              <ResidualInput label="Gross Profit" field="netProfit" form={form} updateForm={updateForm} />
             </>
           ) : null}
           {showPobFields ? (
@@ -2560,7 +2572,7 @@ function CustomResidualAccountCard({
               disabled={disabled}
               form={form}
               field="netProfit"
-              label="GreenHub net profit"
+              label="Gross profit"
               onFieldChange={onFieldChange}
             />
           </>
@@ -2645,6 +2657,16 @@ function ccAgentResidual(row: ResidualReportRow) {
   return row.residualType === "cc" ? row.agentProfit : 0;
 }
 
+function ccGrossProfit(row: ResidualReportRow) {
+  return row.residualType === "cc" ? row.greenhubNetProfit : 0;
+}
+
+function ccGreenhubNetProfit(row: ResidualReportRow) {
+  return row.residualType === "cc"
+    ? splitAmount(row.greenhubNetProfit, greenhubCcSplitPercentForAgentSplit(row.agentSplit))
+    : 0;
+}
+
 function ResidualSummary({
   totals,
   view,
@@ -2663,6 +2685,7 @@ function ResidualSummary({
       : view === "cc"
         ? [
             { label: "CC Merchant Sales Volume", value: currency(totals.salesVolume) },
+            { label: "CC Gross Profit", value: currency(totals.ccGrossProfit) },
             { label: "CC GreenHub Net Profit", value: currency(totals.greenhubNetProfit) },
             { label: "Agent Revenue Share Total", value: currency(totals.agentProfit) },
             { label: "Equipment Cost", value: currency(totals.equipmentCost) },
@@ -2706,7 +2729,7 @@ function QuickResidualInput({
       readOnly={readOnly}
       value={value}
       onChange={(event) => onValueChange?.(event.target.value)}
-      className={`h-9 w-28 rounded-lg border border-slate-300 px-2 text-right text-xs font-medium tabular-nums text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 ${
+      className={`h-8 w-full min-w-0 rounded-md border border-slate-300 px-1.5 text-right text-[11px] font-medium tabular-nums text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 ${
         readOnly ? "bg-slate-100 text-slate-600" : "bg-white"
       }`}
     />
@@ -2735,7 +2758,7 @@ function ResidualReportTable({
   if (view === "pob") {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1780px] text-left text-xs text-slate-900">
+        <table className="w-full min-w-[1320px] table-fixed text-left text-[11px] text-slate-900">
           <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
             <tr>
               <th className="p-4">Merchant</th>
@@ -2840,7 +2863,7 @@ function ResidualReportTable({
                       aria-label={`${row.merchant} merchant notes`}
                       value={edit.merchantNotes}
                       onChange={(event) => onUpdateRow(row, "merchantNotes", event.target.value)}
-                      className="h-9 w-48 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                      className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-1.5 text-[11px] font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                     />
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -2849,7 +2872,7 @@ function ResidualReportTable({
                         type="button"
                         disabled={saving}
                         onClick={() => onSaveRow(row)}
-                        className="rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md bg-emerald-800 px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {saving ? "Saving" : row.hasResidual ? "Save" : "Create"}
                       </button>
@@ -2857,7 +2880,7 @@ function ResidualReportTable({
                         type="button"
                         disabled={saving || (row.hasResidual && row.status !== "draft")}
                         onClick={() => onRemoveRow(row)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
                         Remove
@@ -2877,7 +2900,7 @@ function ResidualReportTable({
   if (view === "cc") {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1200px] text-left text-xs text-slate-900">
+        <table className="w-full min-w-[1240px] table-fixed text-left text-[11px] text-slate-900">
           <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
             <tr>
               <th className="p-4">Merchant</th>
@@ -2885,7 +2908,9 @@ function ResidualReportTable({
               <th className="px-3 py-3">Platform</th>
               <th className="px-3 py-3">Status</th>
               <th className="px-3 py-3 text-right">Agent CC Split</th>
+              <th className="px-3 py-3 text-right">GreenHub CC Split</th>
               <th className="px-3 py-3 text-right">Merchant Sales Volume</th>
+              <th className="px-3 py-3 text-right">Gross Profit</th>
               <th className="px-3 py-3 text-right">GreenHub Net Profit</th>
               <th className="px-3 py-3 text-right">Agent Residual</th>
               <th className="px-3 py-3 text-right">Equipment Cost</th>
@@ -2897,6 +2922,8 @@ function ResidualReportTable({
             {rows.map((row) => {
               const key = reportRowEditKey(row);
               const edit = withResidualCalculations(rowEdits[key] ?? formFromReportRow(row), "cc");
+              const greenhubSplit = greenhubCcSplitPercent(edit.agentCommissionStructure);
+              const greenhubNetProfit = ccGreenhubNetProfitFromForm(edit);
               const saving = savingRowKey === key;
 
               return (
@@ -2910,7 +2937,14 @@ function ResidualReportTable({
                       aria-label={`${row.merchant} agent CC split`}
                       value={edit.agentCommissionStructure}
                       onChange={(event) => onUpdateRow(row, "agentCommissionStructure", event.target.value)}
-                      className="h-9 w-36 rounded-lg border border-slate-300 bg-white px-2 text-right text-xs font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                      className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-1.5 text-right text-[11px] font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} GreenHub CC split`}
+                      readOnly
+                      value={splitLabel(greenhubSplit)}
                     />
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -2922,9 +2956,16 @@ function ResidualReportTable({
                   </td>
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
-                      ariaLabel={`${row.merchant} GreenHub net profit`}
+                      ariaLabel={`${row.merchant} gross profit`}
                       value={edit.netProfit}
                       onValueChange={(value) => onUpdateRow(row, "netProfit", value)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <QuickResidualInput
+                      ariaLabel={`${row.merchant} GreenHub net profit`}
+                      readOnly
+                      value={inputAmount(greenhubNetProfit)}
                     />
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -2946,7 +2987,7 @@ function ResidualReportTable({
                       aria-label={`${row.merchant} merchant notes`}
                       value={edit.merchantNotes}
                       onChange={(event) => onUpdateRow(row, "merchantNotes", event.target.value)}
-                      className="h-9 w-48 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                      className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-1.5 text-[11px] font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                     />
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -2955,7 +2996,7 @@ function ResidualReportTable({
                         type="button"
                         disabled={saving}
                         onClick={() => onSaveRow(row)}
-                        className="rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md bg-emerald-800 px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {saving ? "Saving" : row.hasResidual ? "Save" : "Create"}
                       </button>
@@ -2963,7 +3004,7 @@ function ResidualReportTable({
                         type="button"
                         disabled={saving || (row.hasResidual && row.status !== "draft")}
                         onClick={() => onRemoveRow(row)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
                         Remove
@@ -2973,7 +3014,7 @@ function ResidualReportTable({
                 </tr>
               );
             })}
-            <ResidualEmptyRow colSpan={11} rows={rows} />
+            <ResidualEmptyRow colSpan={13} rows={rows} />
           </tbody>
         </table>
       </div>
@@ -2982,7 +3023,7 @@ function ResidualReportTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1180px] text-left text-xs text-slate-900">
+      <table className="w-full min-w-[980px] table-fixed text-left text-[11px] text-slate-900">
         <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
           <tr>
             <th className="p-4">Merchant</th>
@@ -3034,7 +3075,7 @@ function ResidualRowAction({
         type="button"
         disabled={row.hasResidual && row.status !== "draft"}
         onClick={() => onRemoveRow(row)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
         Remove
@@ -3066,10 +3107,11 @@ function totalResiduals(rows: ResidualReportRow[]) {
             (totals.transactionsPerMonth + row.transactionsPerMonth)
           : 0,
       equipmentCost: totals.equipmentCost + row.equipmentCost,
-      greenhubNetProfit: totals.greenhubNetProfit + row.greenhubNetProfit,
+      ccGrossProfit: totals.ccGrossProfit + ccGrossProfit(row),
+      greenhubNetProfit: totals.greenhubNetProfit + ccGreenhubNetProfit(row),
       greenhubPobNetProfit: totals.greenhubPobNetProfit + row.greenhubPobNetProfit,
       totalGreenhubNetResidual:
-        totals.totalGreenhubNetResidual + row.greenhubNetProfit + row.greenhubPobNetProfit,
+        totals.totalGreenhubNetResidual + ccGreenhubNetProfit(row) + row.greenhubPobNetProfit,
       ccAgentResidual: totals.ccAgentResidual + ccAgentResidual(row),
       pobAgentResidual: totals.pobAgentResidual + pobAgentResidual(row),
       salesVolume: totals.salesVolume + row.salesVolume,
@@ -3080,6 +3122,7 @@ function totalResiduals(rows: ResidualReportRow[]) {
       agentNetResidual: 0,
       averagePobProfitPerTransaction: 0,
       ccAgentResidual: 0,
+      ccGrossProfit: 0,
       equipmentCost: 0,
       greenhubNetProfit: 0,
       greenhubPobNetProfit: 0,

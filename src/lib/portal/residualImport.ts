@@ -38,7 +38,14 @@ const fieldAliases: Record<ImportField, string[]> = {
   ],
   agentProfit: ["agent profit", "agent residual", "agent pob residual", "agent amount due", "amount due"],
   equipmentCost: ["equipment cost"],
-  greenhubNetProfit: ["greenhub net profit", "greenhub cc net profit", "cc greenhub net profit"],
+  greenhubNetProfit: [
+    "gross profit",
+    "greenhub gross profit",
+    "cc gross profit",
+    "greenhub net profit",
+    "greenhub cc net profit",
+    "cc greenhub net profit",
+  ],
   greenhubPobBuyRate: ["greenhub pob buy rate", "pob buy rate", "iso buy rate", "buy rate"],
   greenhubPobNetProfit: ["greenhub pob net profit", "pob net profit"],
   greenhubPobProfitPerTransaction: [
