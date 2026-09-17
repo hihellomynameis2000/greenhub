@@ -8,6 +8,13 @@ import {
 } from "@/lib/portal/server";
 import { assertPartnerLibraryAvailable, fetchPartnerLibrary, visibleDealQuery } from "@/lib/portal/partner";
 import { accountAgentSplitPercent, hasSecondaryAgent, splitAmount } from "@/lib/portal/agentSplits";
+import {
+  accountAgentSplitValue,
+  accountSplitAssignments,
+  accountSplitType,
+  hasStoredAccountSplitMeta,
+  visibleAccountAgentIds,
+} from "@/lib/portal/accountSplitMeta";
 import { visibleResidualsForRole } from "@/lib/portal/residualVisibility";
 import { inferredResidualPlatformType } from "@/lib/portal/residualType";
 import type {
@@ -38,37 +45,15 @@ function amount(value: number | string | null | undefined) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-function sharedAgentColumnsMissing(error: unknown) {
-  return (
-    error instanceof PortalApiError &&
-    /secondary_agent_id|primary_agent_split|secondary_agent_split|schema cache|column/i.test(error.message)
-  );
-}
-
 async function fetchAccountsForContext(context: PortalContext, accountQuery: URLSearchParams) {
   if (context.profile.role !== "agent") {
     return supabaseRest<MerchantAccount[]>("residual_merchant_accounts", { query: accountQuery });
   }
 
-  const sharedQuery = new URLSearchParams(accountQuery);
-  sharedQuery.set(
-    "or",
-    `(assigned_agent_id.eq.${context.profile.id},secondary_agent_id.eq.${context.profile.id})`
-  );
-
-  try {
-    return await supabaseRest<MerchantAccount[]>("residual_merchant_accounts", {
-      query: sharedQuery,
-    });
-  } catch (error) {
-    if (!sharedAgentColumnsMissing(error)) throw error;
-
-    const fallbackQuery = new URLSearchParams(accountQuery);
-    fallbackQuery.set("assigned_agent_id", `eq.${context.profile.id}`);
-    return supabaseRest<MerchantAccount[]>("residual_merchant_accounts", {
-      query: fallbackQuery,
-    });
-  }
+  const accounts = await supabaseRest<MerchantAccount[]>("residual_merchant_accounts", {
+    query: accountQuery,
+  });
+  return accounts.filter((account) => visibleAccountAgentIds(account).includes(context.profile.id));
 }
 
 function residualsForAgent({
@@ -96,8 +81,20 @@ function residualsForAgent({
       residualType,
     });
     const rawAgentProfit = amount(residual.agent_profit);
+    const splitType =
+      residualType === "pob" &&
+      accountSplitAssignments(account).length > 1 &&
+      !hasStoredAccountSplitMeta(account)
+        ? "fixed"
+        : accountSplitType(account);
+    const fixedPobSplit =
+      residualType === "pob" && splitType === "fixed"
+        ? amount(accountAgentSplitValue(account, profileId))
+        : 0;
     const agentProfit =
-      residualType === "cc"
+      fixedPobSplit
+        ? amount(residual.transactions_per_month) * fixedPobSplit
+        : residualType === "cc"
         ? splitAmount(amount(residual.greenhub_net_profit), splitPercent)
         : hasSecondaryAgent(account)
           ? splitAmount(rawAgentProfit, splitPercent)
@@ -119,7 +116,7 @@ export async function GET(request: NextRequest) {
     platformQuery.set("order", "name.asc");
 
     const accountQuery = query();
-    accountQuery.set("order", "created_at.desc");
+    accountQuery.set("order", "account_name.asc");
 
     const residualQuery = query();
     residualQuery.set("order", "residual_year.desc,residual_month.desc,created_at.desc");

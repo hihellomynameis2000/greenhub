@@ -1,34 +1,46 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Archive, Pencil, Plus, Save, X } from "lucide-react";
+import { Archive, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { accounts as demoAccounts, agents as demoAgents, platforms as demoPlatforms } from "@/components/portal/mockData";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
+import {
+  type AccountSplitType,
+  accountSplitAssignments,
+  accountSplitType,
+  readAccountSplitMeta,
+  visibleAccountAgentIds,
+} from "@/lib/portal/accountSplitMeta";
 import { portalRequest } from "@/lib/portal/client";
+import { inferredResidualPlatformType } from "@/lib/portal/residualType";
 import type { MerchantAccount } from "@/lib/portal/types";
+
+type SplitFormRow = {
+  agentId: string;
+  key: string;
+  split: string;
+};
+
+const defaultSplitRows: SplitFormRow[] = [{ agentId: "", key: "primary", split: "100" }];
 
 const initialForm = {
   accountName: "",
-  assignedAgentId: "",
+  agentSplits: defaultSplitRows,
   commissionStructure: "",
   internalNotes: "",
   platformId: "",
-  primaryAgentSplit: "100",
-  secondaryAgentId: "",
-  secondaryAgentSplit: "0",
+  splitType: "percent" as AccountSplitType,
   status: "active",
 };
 
 const initialAccountEdit = {
   accountName: "",
-  assignedAgentId: "",
+  agentSplits: defaultSplitRows,
   platformId: "",
-  primaryAgentSplit: "100",
-  secondaryAgentId: "",
-  secondaryAgentSplit: "0",
+  splitType: "percent" as AccountSplitType,
   status: "active",
 };
 
@@ -37,6 +49,31 @@ type AccountEditForm = typeof initialAccountEdit;
 function inputPercent(value: unknown, fallback: string) {
   if (value === null || value === undefined || value === "") return fallback;
   return String(value).replace(/%/g, "");
+}
+
+function splitRowKey() {
+  return `split-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function splitRowsForAccount(account: MerchantAccount): SplitFormRow[] {
+  const meta = readAccountSplitMeta(account.internal_notes, account);
+  const rows = meta.agents.map((row, index) => ({
+    agentId: row.agentId,
+    key: index === 0 ? "primary" : `${row.agentId}-${index}`,
+    split: inputPercent(row.split, index === 0 ? "100" : "0"),
+  }));
+
+  return rows.length ? rows : [{ agentId: account.assigned_agent_id ?? "", key: "primary", split: "100" }];
+}
+
+function payloadSplits(rows: SplitFormRow[]) {
+  return rows
+    .map((row) => ({ agentId: row.agentId, split: row.split }))
+    .filter((row) => row.agentId);
+}
+
+function splitTypeLabel(type: AccountSplitType) {
+  return type === "fixed" ? "$" : "%";
 }
 
 export default function AdminAccountsPage() {
@@ -61,6 +98,7 @@ function AdminAccountsContent() {
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [accountEditForm, setAccountEditForm] = useState<AccountEditForm>(initialAccountEdit);
   const [savingAccountId, setSavingAccountId] = useState<string | null>(null);
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
   const platformOptions = data
     ? data.platforms.map((platform) => ({ label: platform.name, value: platform.id }))
     : previewPlatforms.map((platform) => ({ label: platform, value: platform }));
@@ -76,6 +114,12 @@ function AdminAccountsContent() {
     () => new Map(data?.agents.map((agent) => [agent.id, agent.name]) ?? []),
     [data?.agents]
   );
+  function defaultSplitTypeForPlatform(platformId: string): AccountSplitType {
+    const platform = data?.platforms.find((item) => item.id === platformId);
+    const residualType = platform?.residual_type ?? inferredResidualPlatformType(platform?.name ?? platformId);
+    return residualType === "pob" ? "fixed" : "percent";
+  }
+
   const portfolioPlatformOptions = [
     { label: "All platforms", value: "all" },
     ...platformOptions,
@@ -88,10 +132,9 @@ function AdminAccountsContent() {
     if (!data) return [];
     return data.accounts.filter(
       (account) =>
+        account.status !== "closed" &&
         (portfolioPlatform === "all" || account.platform_id === portfolioPlatform) &&
-        (portfolioAgent === "all" ||
-          account.assigned_agent_id === portfolioAgent ||
-          account.secondary_agent_id === portfolioAgent)
+        (portfolioAgent === "all" || visibleAccountAgentIds(account).includes(portfolioAgent))
     );
   }, [data, portfolioAgent, portfolioPlatform]);
   const filteredDemoAccounts = useMemo(
@@ -107,11 +150,25 @@ function AdminAccountsContent() {
   async function saveAccount() {
     setSaving(true);
     setError(null);
+    const agentSplits = payloadSplits(form.agentSplits);
+
+    if (!agentSplits.length) {
+      setError("Choose at least one agent for this account.");
+      setSaving(false);
+      return;
+    }
 
     try {
       await portalRequest("/api/portal/accounts", {
         method: "POST",
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          agentSplits,
+          assignedAgentId: agentSplits[0].agentId,
+          primaryAgentSplit: agentSplits[0].split,
+          secondaryAgentId: agentSplits[1]?.agentId ?? "",
+          secondaryAgentSplit: agentSplits[1]?.split ?? "0",
+        }),
       });
       setForm(initialForm);
       await refresh();
@@ -190,25 +247,90 @@ function AdminAccountsContent() {
   }
 
   function beginEditAccount(account: MerchantAccount) {
+    const meta = readAccountSplitMeta(account.internal_notes, account);
     setEditingAccountId(account.id);
     setAccountEditForm({
       accountName: account.account_name,
-      assignedAgentId: account.assigned_agent_id ?? "",
+      agentSplits: splitRowsForAccount(account),
       platformId: account.platform_id ?? "",
-      primaryAgentSplit: inputPercent(account.primary_agent_split, "100"),
-      secondaryAgentId: account.secondary_agent_id ?? "",
-      secondaryAgentSplit: inputPercent(account.secondary_agent_split, "0"),
+      splitType: meta.splitType,
       status: account.status ?? "active",
     });
   }
 
-  function setAccountEditField(field: keyof AccountEditForm, value: string) {
-    setAccountEditForm((current) => ({ ...current, [field]: value }));
+  function setAccountEditField(field: Exclude<keyof AccountEditForm, "agentSplits">, value: string) {
+    setAccountEditForm((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "platformId" ? { splitType: defaultSplitTypeForPlatform(value) } : {}),
+    }));
+  }
+
+  function setFormPlatform(platformId: string) {
+    setForm((current) => ({
+      ...current,
+      platformId,
+      splitType: defaultSplitTypeForPlatform(platformId),
+    }));
+  }
+
+  function setFormSplitRow(key: string, patch: Partial<SplitFormRow>) {
+    setForm((current) => ({
+      ...current,
+      agentSplits: current.agentSplits.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+    }));
+  }
+
+  function addFormSplitRow() {
+    setForm((current) => ({
+      ...current,
+      agentSplits: [...current.agentSplits, { agentId: "", key: splitRowKey(), split: "0" }],
+    }));
+  }
+
+  function removeFormSplitRow(key: string) {
+    setForm((current) => ({
+      ...current,
+      agentSplits:
+        current.agentSplits.length > 1
+          ? current.agentSplits.filter((row) => row.key !== key)
+          : current.agentSplits,
+    }));
+  }
+
+  function setEditSplitRow(key: string, patch: Partial<SplitFormRow>) {
+    setAccountEditForm((current) => ({
+      ...current,
+      agentSplits: current.agentSplits.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+    }));
+  }
+
+  function addEditSplitRow() {
+    setAccountEditForm((current) => ({
+      ...current,
+      agentSplits: [...current.agentSplits, { agentId: "", key: splitRowKey(), split: "0" }],
+    }));
+  }
+
+  function removeEditSplitRow(key: string) {
+    setAccountEditForm((current) => ({
+      ...current,
+      agentSplits:
+        current.agentSplits.length > 1
+          ? current.agentSplits.filter((row) => row.key !== key)
+          : current.agentSplits,
+    }));
   }
 
   async function saveAccountEdit(id: string) {
     if (!accountEditForm.accountName.trim()) {
       setError("Merchant name is required.");
+      return;
+    }
+    const agentSplits = payloadSplits(accountEditForm.agentSplits);
+
+    if (!agentSplits.length) {
+      setError("Choose at least one agent for this account.");
       return;
     }
 
@@ -219,13 +341,15 @@ function AdminAccountsContent() {
       await portalRequest("/api/portal/accounts", {
         method: "PATCH",
         body: JSON.stringify({
-          assignedAgentId: accountEditForm.assignedAgentId,
           accountName: accountEditForm.accountName,
+          agentSplits,
           id,
           platformId: accountEditForm.platformId,
-          primaryAgentSplit: accountEditForm.primaryAgentSplit,
-          secondaryAgentId: accountEditForm.secondaryAgentId,
-          secondaryAgentSplit: accountEditForm.secondaryAgentId ? accountEditForm.secondaryAgentSplit : "0",
+          assignedAgentId: agentSplits[0].agentId,
+          primaryAgentSplit: agentSplits[0].split,
+          secondaryAgentId: agentSplits[1]?.agentId ?? "",
+          secondaryAgentSplit: agentSplits[1]?.split ?? "0",
+          splitType: accountEditForm.splitType,
           status: accountEditForm.status,
         }),
       });
@@ -236,6 +360,28 @@ function AdminAccountsContent() {
       setError(requestError instanceof Error ? requestError.message : "The account could not be updated.");
     } finally {
       setSavingAccountId(null);
+    }
+  }
+
+  async function deleteAccount(account: MerchantAccount) {
+    setDeletingAccountId(account.id);
+    setError(null);
+
+    try {
+      const result = await portalRequest<{ archived: boolean }>(
+        `/api/portal/accounts?id=${encodeURIComponent(account.id)}`,
+        { method: "DELETE" }
+      );
+      if (editingAccountId === account.id) setEditingAccountId(null);
+      await refresh();
+      showPortalToast({
+        title: result.archived ? "Account archived" : "Account deleted",
+        message: `${account.account_name} was removed from the active account list.`,
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The account could not be deleted.");
+    } finally {
+      setDeletingAccountId(null);
     }
   }
 
@@ -271,7 +417,7 @@ function AdminAccountsContent() {
             Processing platform
             <PortalSelect
               value={form.platformId}
-              onValueChange={(platformId) => setForm((current) => ({ ...current, platformId }))}
+              onValueChange={setFormPlatform}
               options={[
                 { disabled: true, label: "Select platform", value: "" },
                 ...platformOptions,
@@ -279,59 +425,71 @@ function AdminAccountsContent() {
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-            Primary agent
+            Split mode
             <PortalSelect
-              value={form.assignedAgentId}
-              onValueChange={(assignedAgentId) =>
-                setForm((current) => ({ ...current, assignedAgentId }))
+              value={form.splitType}
+              onValueChange={(splitType) =>
+                setForm((current) => ({ ...current, splitType: splitType as AccountSplitType }))
               }
               options={[
-                { disabled: true, label: "Assign agent", value: "" },
-                ...agentOptions,
+                { label: "Percent split", value: "percent" },
+                { label: "Fixed dollar split", value: "fixed" },
               ]}
             />
           </label>
-          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-            Primary agent split
-            <input
-              className={portalInputClass}
-              inputMode="decimal"
-              placeholder="100"
-              value={form.primaryAgentSplit}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, primaryAgentSplit: event.target.value }))
-              }
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-            Sub-agent
-            <PortalSelect
-              value={form.secondaryAgentId}
-              onValueChange={(secondaryAgentId) =>
-                setForm((current) => ({
-                  ...current,
-                  secondaryAgentId,
-                  secondaryAgentSplit: secondaryAgentId ? current.secondaryAgentSplit : "0",
-                }))
-              }
-              options={[
-                { label: "No sub-agent", value: "" },
-                ...agentOptions.filter((agent) => agent.value !== form.assignedAgentId),
-              ]}
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-            Sub-agent split
-            <input
-              className={portalInputClass}
-              inputMode="decimal"
-              placeholder="0"
-              value={form.secondaryAgentSplit}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, secondaryAgentSplit: event.target.value }))
-              }
-            />
-          </label>
+          <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 md:col-span-2 xl:col-span-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-800">Agent splits</p>
+              <button
+                type="button"
+                onClick={addFormSplitRow}
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                Add agent
+              </button>
+            </div>
+            {form.agentSplits.map((row, index) => (
+              <div key={row.key} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_120px_36px]">
+                <PortalSelect
+                  ariaLabel={`${index === 0 ? "Primary" : "Additional"} agent`}
+                  value={row.agentId}
+                  onValueChange={(agentId) => setFormSplitRow(row.key, { agentId })}
+                  options={[
+                    { disabled: true, label: index === 0 ? "Primary agent" : "Additional agent", value: "" },
+                    ...agentOptions.filter(
+                      (agent) =>
+                        agent.value === row.agentId ||
+                        !form.agentSplits.some((splitRow) => splitRow.key !== row.key && splitRow.agentId === agent.value)
+                    ),
+                  ]}
+                />
+                <input
+                  aria-label={`${index === 0 ? "Primary" : "Additional"} agent split`}
+                  className={portalInputClass}
+                  inputMode="decimal"
+                  placeholder={form.splitType === "fixed" ? "0.25" : "50"}
+                  value={row.split}
+                  onChange={(event) => setFormSplitRow(row.key, { split: event.target.value })}
+                />
+                <button
+                  type="button"
+                  disabled={form.agentSplits.length === 1}
+                  onClick={() => removeFormSplitRow(row.key)}
+                  className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Remove agent split"
+                  title="Remove agent"
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            <p className="text-xs font-medium text-slate-500">
+              {form.splitType === "fixed"
+                ? "POB accounts use fixed dollar amounts per transaction."
+                : "CC accounts use percentages of gross profit."}
+            </p>
+          </div>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
             Account status
             <PortalSelect
@@ -527,47 +685,62 @@ function AdminAccountsContent() {
                         </td>
                         <td className="px-4 py-3.5">
                           {editing ? (
-                            <div className="grid min-w-72 gap-2">
+                            <div className="grid min-w-[360px] gap-2">
                               <PortalSelect
-                                ariaLabel="Edit primary agent"
-                                value={accountEditForm.assignedAgentId}
+                                ariaLabel="Edit account split mode"
+                                value={accountEditForm.splitType}
                                 onValueChange={(value) =>
-                                  setAccountEditField("assignedAgentId", value)
+                                  setAccountEditField("splitType", value as AccountSplitType)
                                 }
                                 options={[
-                                  { disabled: true, label: "Assign agent", value: "" },
-                                  ...agentOptions,
+                                  { label: "Percent split", value: "percent" },
+                                  { label: "Fixed dollar split", value: "fixed" },
                                 ]}
                               />
-                              <div className="grid grid-cols-2 gap-2">
-                                <input
-                                  aria-label="Primary agent split"
-                                  className={portalInputClass}
-                                  inputMode="decimal"
-                                  value={accountEditForm.primaryAgentSplit}
-                                  onChange={(event) =>
-                                    setAccountEditField("primaryAgentSplit", event.target.value)
-                                  }
-                                />
-                                <input
-                                  aria-label="Sub-agent split"
-                                  className={portalInputClass}
-                                  inputMode="decimal"
-                                  value={accountEditForm.secondaryAgentSplit}
-                                  onChange={(event) =>
-                                    setAccountEditField("secondaryAgentSplit", event.target.value)
-                                  }
-                                />
-                              </div>
-                              <PortalSelect
-                                ariaLabel="Edit sub-agent"
-                                value={accountEditForm.secondaryAgentId}
-                                onValueChange={(value) => setAccountEditField("secondaryAgentId", value)}
-                                options={[
-                                  { label: "No sub-agent", value: "" },
-                                  ...agentOptions.filter((agent) => agent.value !== accountEditForm.assignedAgentId),
-                                ]}
-                              />
+                              {accountEditForm.agentSplits.map((row, index) => (
+                                <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_86px_32px] gap-2">
+                                  <PortalSelect
+                                    ariaLabel={`${index === 0 ? "Primary" : "Additional"} agent`}
+                                    value={row.agentId}
+                                    onValueChange={(value) => setEditSplitRow(row.key, { agentId: value })}
+                                    options={[
+                                      { disabled: true, label: index === 0 ? "Primary agent" : "Additional agent", value: "" },
+                                      ...agentOptions.filter(
+                                        (agent) =>
+                                          agent.value === row.agentId ||
+                                          !accountEditForm.agentSplits.some(
+                                            (splitRow) => splitRow.key !== row.key && splitRow.agentId === agent.value
+                                          )
+                                      ),
+                                    ]}
+                                  />
+                                  <input
+                                    aria-label={`${index === 0 ? "Primary" : "Additional"} split`}
+                                    className={portalInputClass}
+                                    inputMode="decimal"
+                                    value={row.split}
+                                    onChange={(event) => setEditSplitRow(row.key, { split: event.target.value })}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={accountEditForm.agentSplits.length === 1}
+                                    onClick={() => removeEditSplitRow(row.key)}
+                                    className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                    aria-label="Remove agent split"
+                                    title="Remove agent"
+                                  >
+                                    <X aria-hidden="true" className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={addEditSplitRow}
+                                className="inline-flex h-8 w-fit items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                              >
+                                <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                                Add agent
+                              </button>
                             </div>
                           ) : (
                             <AccountOwnership
@@ -623,17 +796,39 @@ function AdminAccountsContent() {
                               >
                                 <X aria-hidden="true" className="h-4 w-4" />
                               </button>
+                              <button
+                                type="button"
+                                disabled={deletingAccountId === account.id || savingAccountId === account.id}
+                                onClick={() => void deleteAccount(account)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label={`Delete ${account.account_name}`}
+                                title="Delete account"
+                              >
+                                <Trash2 aria-hidden="true" className="h-4 w-4" />
+                              </button>
                             </div>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => beginEditAccount(account)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                              aria-label={`Edit ${account.account_name}`}
-                              title="Edit account"
-                            >
-                              <Pencil aria-hidden="true" className="h-4 w-4" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => beginEditAccount(account)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                                aria-label={`Edit ${account.account_name}`}
+                                title="Edit account"
+                              >
+                                <Pencil aria-hidden="true" className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deletingAccountId === account.id}
+                                onClick={() => void deleteAccount(account)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label={`Delete ${account.account_name}`}
+                                title="Delete account"
+                              >
+                                <Trash2 aria-hidden="true" className="h-4 w-4" />
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -680,29 +875,32 @@ function AccountOwnership({
   account: MerchantAccount;
   agentNames: Map<string, string>;
 }) {
-  const primaryAgent = agentNames.get(account.assigned_agent_id ?? "") ?? "Unassigned";
-  const primarySplit = inputPercent(account.primary_agent_split, "100");
-  const secondaryAgent = account.secondary_agent_id
-    ? agentNames.get(account.secondary_agent_id) ?? "Sub-agent"
-    : null;
-  const secondarySplit = inputPercent(account.secondary_agent_split, "0");
+  const assignments = accountSplitAssignments(account);
+  const splitType = accountSplitType(account);
+  const unit = splitTypeLabel(splitType);
 
   return (
     <div className="space-y-1">
-      <p className="font-semibold text-slate-900">
-        {primaryAgent}
-        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-          {primarySplit}%
-        </span>
-      </p>
-      {secondaryAgent ? (
-        <p className="text-xs font-medium text-slate-600">
-          Sub-agent: {secondaryAgent}
-          <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
-            {secondarySplit}%
-          </span>
-        </p>
-      ) : null}
+      {assignments.length ? (
+        assignments.map((row, index) => (
+          <p
+            key={`${row.agentId}-${index}`}
+            className={index === 0 ? "font-semibold text-slate-900" : "text-xs font-medium text-slate-600"}
+          >
+            {index === 0 ? "" : "Sub-agent: "}
+            {agentNames.get(row.agentId) ?? "Unassigned"}
+            <span
+              className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                index === 0 ? "bg-slate-100 text-slate-700" : "bg-emerald-100 text-emerald-800"
+              }`}
+            >
+              {splitType === "fixed" ? `$${row.split}` : `${row.split}${unit}`}
+            </span>
+          </p>
+        ))
+      ) : (
+        <p className="font-semibold text-slate-900">Unassigned</p>
+      )}
     </div>
   );
 }

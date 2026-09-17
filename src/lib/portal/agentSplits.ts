@@ -1,5 +1,6 @@
 import type { MerchantAccount, NumericValue } from "./types";
 import type { ResidualPlatformType } from "./residualType";
+import { accountSplitAssignments, accountSplitType } from "./accountSplitMeta";
 
 function numeric(value: NumericValue | undefined) {
   if (value === null || value === undefined || value === "") return 0;
@@ -23,7 +24,10 @@ export function normalizedSplitPercent(value: NumericValue | undefined, fallback
 }
 
 export function hasSecondaryAgent(account: MerchantAccount | null | undefined) {
-  return Boolean(account?.secondary_agent_id && normalizedSplitPercent(account.secondary_agent_split) > 0);
+  return (
+    accountSplitAssignments(account).length > 1 ||
+    Boolean(account?.secondary_agent_id && normalizedSplitPercent(account.secondary_agent_split) > 0)
+  );
 }
 
 export function accountAgentSplitPercent({
@@ -37,6 +41,14 @@ export function accountAgentSplitPercent({
   fallbackCommission?: string | null;
   residualType: ResidualPlatformType;
 }) {
+  const assignments = accountSplitAssignments(account);
+  const assigned = assignments.find((row) => row.agentId === agentId);
+
+  if (assignments.length) {
+    if (assigned) return normalizedSplitPercent(assigned.split);
+    return 0;
+  }
+
   if (account?.secondary_agent_id && account.secondary_agent_id === agentId) {
     return normalizedSplitPercent(account.secondary_agent_split);
   }
@@ -67,6 +79,15 @@ export function adminAccountSplitPercent({
       fallbackCommission,
       residualType,
     });
+  }
+
+  const assignments = accountSplitAssignments(account);
+  const splitType = accountSplitType(account);
+  if (assignments.length && splitType === "percent") {
+    return Math.min(
+      assignments.reduce((total, row) => total + normalizedSplitPercent(row.split), 0),
+      100
+    );
   }
 
   if (hasSecondaryAgent(account)) {

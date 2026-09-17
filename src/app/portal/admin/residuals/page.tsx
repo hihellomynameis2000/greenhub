@@ -8,9 +8,17 @@ import { PortalPagination } from "@/components/portal/PortalPagination";
 import { PageHeader, PortalShell, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect, type PortalSelectOption } from "@/components/portal/PortalSelect";
 import { PortalActionButton, showPortalToast } from "@/components/portal/PortalToast";
-import { adminAccountSplitPercent, hasSecondaryAgent, splitAmount, splitLabel, splitPercentFromText } from "@/lib/portal/agentSplits";
+import { splitAmount, splitLabel, splitPercentFromText } from "@/lib/portal/agentSplits";
+import {
+  accountSplitAssignments,
+  accountSplitType,
+  hasStoredAccountSplitMeta,
+  readAccountSplitMeta,
+  visibleAccountAgentIds,
+} from "@/lib/portal/accountSplitMeta";
 import { portalFileRequest, portalRequest } from "@/lib/portal/client";
 import type { ParsedResidualImport, ParsedResidualImportRow } from "@/lib/portal/residualImport";
+import { readResidualMeta, writeResidualMeta } from "@/lib/portal/residualMeta";
 import { inferredResidualPlatformType, type ResidualPlatformType } from "@/lib/portal/residualType";
 import type { MerchantAccount, MonthlyResidual, Platform } from "@/lib/portal/types";
 
@@ -67,6 +75,7 @@ type ResidualForm = {
   agentId: string;
   agentProfit: string;
   equipmentCost: string;
+  greenhubCcSplit: string;
   greenhubPobBuyRate: string;
   greenhubPobNetProfit: string;
   greenhubPobProfitPerTransaction: string;
@@ -97,9 +106,11 @@ type ResidualReportRow = {
   agent: string;
   agentCommissionStructure: string;
   agentId: string;
+  agentIds: string[];
   agentProfit: number;
   agentSplit: number;
   equipmentCost: number;
+  greenhubCcSplit: string;
   greenhubNetProfit: number;
   greenhubPobBuyRate: number;
   greenhubPobNetProfit: number;
@@ -157,6 +168,7 @@ const initialForm: ResidualForm = {
   agentId: "",
   agentProfit: "",
   equipmentCost: "",
+  greenhubCcSplit: "",
   greenhubPobBuyRate: "",
   greenhubPobNetProfit: "",
   greenhubPobProfitPerTransaction: "",
@@ -203,6 +215,7 @@ const demoDrafts: DraftEntry[] = [
       agentId: "nick@greenhubinc.com",
       agentProfit: "$1,020.79",
       equipmentCost: "$250.00",
+      greenhubCcSplit: "",
       greenhubPobBuyRate: "$3.00",
       greenhubPobNetProfit: "$655.20",
       greenhubPobProfitPerTransaction: "$1.20",
@@ -231,6 +244,7 @@ const demoDrafts: DraftEntry[] = [
       agentId: "rob@paynex.net",
       agentProfit: "$332.58",
       equipmentCost: "$200.00",
+      greenhubCcSplit: "",
       greenhubPobBuyRate: "$2.75",
       greenhubPobNetProfit: "$384.30",
       greenhubPobProfitPerTransaction: "$1.05",
@@ -352,8 +366,102 @@ function greenhubCcSplitPercentForAgentSplit(agentSplit: number) {
   return Math.min(Math.max(100 - agentSplit, 0), 100);
 }
 
-function ccGreenhubNetProfitFromForm(form: Pick<ResidualForm, "agentCommissionStructure" | "netProfit">) {
-  return splitAmount(amount(form.netProfit), greenhubCcSplitPercent(form.agentCommissionStructure));
+function normalizedPercent(value: string | number | null | undefined, fallback: number) {
+  const parsed = amount(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, 0), 100);
+}
+
+function greenhubCcSplitPercentFromForm(
+  form: Pick<ResidualForm, "agentCommissionStructure" | "greenhubCcSplit">
+) {
+  return form.greenhubCcSplit
+    ? normalizedPercent(form.greenhubCcSplit, greenhubCcSplitPercent(form.agentCommissionStructure))
+    : greenhubCcSplitPercent(form.agentCommissionStructure);
+}
+
+function ccGreenhubNetProfitFromForm(
+  form: Pick<ResidualForm, "agentCommissionStructure" | "greenhubCcSplit" | "netProfit">
+) {
+  return splitAmount(amount(form.netProfit), greenhubCcSplitPercentFromForm(form));
+}
+
+function reportAgentIds(account: MerchantAccount | null | undefined, fallbackAgentId: string) {
+  const ids = visibleAccountAgentIds(account);
+  if (ids.length) return ids;
+  return fallbackAgentId ? [fallbackAgentId] : [];
+}
+
+function reportAgentSplit({
+  account,
+  fallbackCommission,
+  reportAgent,
+  residualType,
+}: {
+  account: MerchantAccount | null | undefined;
+  fallbackCommission?: string | null;
+  reportAgent: string;
+  residualType: ResidualPlatformType;
+}) {
+  const assignments = accountSplitAssignments(account);
+  const splitType =
+    residualType === "pob" && assignments.length > 1 && !hasStoredAccountSplitMeta(account)
+      ? "fixed"
+      : accountSplitType(account);
+
+  if (assignments.length) {
+    if (reportAgent !== "all") {
+      const value = assignments.find((row) => row.agentId === reportAgent)?.split;
+      return splitType === "fixed" && residualType === "pob"
+        ? amount(value)
+        : normalizedPercent(value, 0);
+    }
+
+    return assignments.reduce(
+      (total, row) =>
+        total + (splitType === "fixed" && residualType === "pob" ? amount(row.split) : normalizedPercent(row.split, 0)),
+      0
+    );
+  }
+
+  return residualType === "cc" ? splitPercentFromText(fallbackCommission, 100) : 100;
+}
+
+function reportAgentProfit({
+  account,
+  agentSplit,
+  grossCcProfit,
+  rawAgentProfit,
+  reportAgent,
+  residualType,
+  transactions,
+}: {
+  account: MerchantAccount | null | undefined;
+  agentSplit: number;
+  grossCcProfit: number;
+  rawAgentProfit: number;
+  reportAgent: string;
+  residualType: ResidualPlatformType;
+  transactions: number;
+}) {
+  if (residualType === "cc") return splitAmount(grossCcProfit, agentSplit);
+
+  const splitType =
+    residualType === "pob" &&
+    accountSplitAssignments(account).length > 1 &&
+    !hasStoredAccountSplitMeta(account)
+      ? "fixed"
+      : accountSplitType(account);
+
+  if (splitType === "fixed" && accountSplitAssignments(account).length) {
+    return transactions * agentSplit;
+  }
+
+  if (reportAgent !== "all" && accountSplitAssignments(account).length > 1) {
+    return splitAmount(rawAgentProfit, agentSplit);
+  }
+
+  return rawAgentProfit;
 }
 
 function calculatedPobField(field: keyof ResidualForm) {
@@ -367,7 +475,7 @@ function calculatedPobField(field: keyof ResidualForm) {
 }
 
 function calculatedCcField(field: keyof ResidualForm) {
-  return field === "agentCommissionStructure" || field === "netProfit";
+  return field === "agentCommissionStructure" || field === "greenhubCcSplit" || field === "netProfit";
 }
 
 function buildResidualPayload(
@@ -387,7 +495,9 @@ function buildResidualPayload(
     greenhubPobBuyRate: ccEntry ? "" : entry.greenhubPobBuyRate,
     greenhubPobNetProfit: ccEntry ? "" : entry.greenhubPobNetProfit,
     greenhubPobProfitPerTransaction: ccEntry ? "" : entry.greenhubPobProfitPerTransaction,
-    merchantNotes: entry.merchantNotes,
+    merchantNotes: ccEntry
+      ? writeResidualMeta(entry.merchantNotes, { greenhubCcSplit: entry.greenhubCcSplit })
+      : entry.merchantNotes,
     merchantAccountId: entry.merchantAccountId,
     monthlySalesVolume: pobEntry ? "" : entry.monthlySalesVolume,
     oneTimeFees: entry.oneTimeFees,
@@ -506,6 +616,7 @@ function AdminResidualsContent() {
   const [parsedImport, setParsedImport] = useState<ParsedResidualImport | null>(null);
   const [importing, setImporting] = useState(false);
   const [rowEdits, setRowEdits] = useState<Record<string, ResidualForm>>({});
+  const [pobOverrideRowKeys, setPobOverrideRowKeys] = useState<string[]>([]);
   const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
   const [quickAddAccountId, setQuickAddAccountId] = useState("");
   const [quickAdding, setQuickAdding] = useState(false);
@@ -755,6 +866,7 @@ function AdminResidualsContent() {
     const baseline =
       residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, platformId)) ??
       residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, ""));
+    const baselineMeta = readResidualMeta(baseline?.merchant_notes);
 
     const entry = withResidualCalculations({
       ...base,
@@ -765,13 +877,14 @@ function AdminResidualsContent() {
       agentId: account.assigned_agent_id ?? "",
       agentProfit: "",
       equipmentCost: rowInputAmount(amount(baseline?.equipment_cost)),
+      greenhubCcSplit: baselineMeta.greenhubCcSplit ?? "",
       greenhubPobBuyRate: rowInputAmount(amount(baseline?.greenhub_pob_buy_rate)),
       greenhubPobNetProfit: "",
       greenhubPobProfitPerTransaction: rowInputAmount(
         amount(baseline?.greenhub_pob_profit_per_transaction)
       ),
       merchantAccountId: account.id,
-      merchantNotes: account.internal_notes ?? "",
+      merchantNotes: readAccountSplitMeta(account.internal_notes, account).cleanNotes || baselineMeta.cleanNotes,
       monthlySalesVolume: "",
       netProfit: "",
       platformId,
@@ -872,6 +985,7 @@ function AdminResidualsContent() {
     const pobEntry = platformType === "pob";
     const ccEntry = platformType === "cc";
     const baseline = row.baselineResidual;
+    const baselineMeta = readResidualMeta(baseline?.merchant_notes);
     const importedOrBaseline = (importedValue: string, baselineValue: number | string | null | undefined) =>
       importedValue || rowInputAmount(amount(baselineValue));
     const entry = withResidualCalculations({
@@ -884,13 +998,14 @@ function AdminResidualsContent() {
       agentId: row.account?.assigned_agent_id ?? "",
       agentProfit: row.agentProfit || rowInputAmount(amount(baseline?.agent_profit)),
       equipmentCost: row.equipmentCost || rowInputAmount(amount(baseline?.equipment_cost)),
+      greenhubCcSplit: baselineMeta.greenhubCcSplit ?? "",
       greenhubPobBuyRate: importedOrBaseline(row.greenhubPobBuyRate, baseline?.greenhub_pob_buy_rate),
       greenhubPobNetProfit: row.greenhubPobNetProfit || "",
       greenhubPobProfitPerTransaction: importedOrBaseline(
         row.greenhubPobProfitPerTransaction,
         baseline?.greenhub_pob_profit_per_transaction
       ),
-      merchantNotes: row.merchantNotes || baseline?.merchant_notes || "",
+      merchantNotes: row.merchantNotes || baselineMeta.cleanNotes || "",
       merchantAccountId: row.account?.id ?? "",
       month: importMonth,
       monthlySalesVolume: pobEntry ? "" : row.monthlySalesVolume,
@@ -1109,6 +1224,7 @@ function AdminResidualsContent() {
       agentId: row.agentId,
       agentProfit: value(row.agentProfit),
       equipmentCost: value(row.equipmentCost),
+      greenhubCcSplit: row.greenhubCcSplit,
       greenhubPobBuyRate: value(row.greenhubPobBuyRate),
       greenhubPobNetProfit: value(row.greenhubPobNetProfit),
       greenhubPobProfitPerTransaction: value(row.greenhubPobProfitPerTransaction),
@@ -1163,7 +1279,13 @@ function AdminResidualsContent() {
     }
 
     const key = reportRowEditKey(row);
-    const entry = withResidualCalculations(rowEdits[key] ?? formFromReportRow(row), row.residualType);
+    const entry = withResidualCalculations(
+      rowEdits[key] ?? formFromReportRow(row),
+      row.residualType,
+      row.residualType === "pob" && pobOverrideRowKeys.includes(key)
+        ? "greenhubPobProfitPerTransaction"
+        : undefined
+    );
 
     setSavingRowKey(key);
     setError(null);
@@ -1482,40 +1604,51 @@ function AdminResidualsContent() {
         account ?? data?.accounts.find((item) => item.id === residual.merchant_account_id) ?? null;
       const platformId = rowAccount?.platform_id ?? residual.platform_id ?? "";
       const agentId = residual.agent_id || rowAccount?.assigned_agent_id || "";
-      const secondaryAgentId = rowAccount?.secondary_agent_id ?? null;
+      const agentIds = reportAgentIds(rowAccount, agentId);
+      const secondaryAgentId = agentIds.find((id) => id !== agentId) ?? rowAccount?.secondary_agent_id ?? null;
       const residualType = residualTypeForPlatformId(platformId);
-      const agentSplit = adminAccountSplitPercent({
+      const agentSplit = reportAgentSplit({
         account: rowAccount,
         fallbackCommission: residual.agent_commission_structure || rowAccount?.commission_structure,
         reportAgent,
         residualType,
       });
       const rawAgentProfit = amount(residual.agent_profit);
-      const agentProfit =
-        residualType === "cc"
-          ? splitAmount(amount(residual.greenhub_net_profit), agentSplit)
-          : reportAgent !== "all" && hasSecondaryAgent(rowAccount)
-            ? splitAmount(rawAgentProfit, agentSplit)
-            : rawAgentProfit;
+      const transactions = amount(residual.transactions_per_month);
+      const agentProfit = reportAgentProfit({
+        account: rowAccount,
+        agentSplit,
+        grossCcProfit: amount(residual.greenhub_net_profit),
+        rawAgentProfit,
+        reportAgent,
+        residualType,
+        transactions,
+      });
+      const residualMeta = readResidualMeta(residual.merchant_notes);
       const displayAgentId = reportAgent !== "all" ? reportAgent : agentId;
       const primaryAgentName = agentNames.get(agentId) ?? "Unknown agent";
-      const secondaryAgentName = secondaryAgentId ? agentNames.get(secondaryAgentId) : null;
+      const assignmentNames = agentIds
+        .map((id) => agentNames.get(id))
+        .filter((name): name is string => Boolean(name));
 
       return {
         agent:
           reportAgent !== "all"
             ? agentNames.get(displayAgentId) ?? primaryAgentName
-            : secondaryAgentName
-              ? `${primaryAgentName} + ${secondaryAgentName}`
+            : assignmentNames.length > 1
+              ? assignmentNames.join(" + ")
               : primaryAgentName,
         agentCommissionStructure:
           residual.agent_commission_structure ||
           rowAccount?.commission_structure ||
+          (residualType === "cc" ? splitLabel(agentSplit) : "") ||
           "Not specified",
         agentId,
+        agentIds,
         agentProfit,
         agentSplit,
         equipmentCost: amount(residual.equipment_cost),
+        greenhubCcSplit: residualMeta.greenhubCcSplit ?? "",
         greenhubNetProfit: amount(residual.greenhub_net_profit),
         greenhubPobBuyRate: amount(residual.greenhub_pob_buy_rate),
         greenhubPobNetProfit: amount(residual.greenhub_pob_net_profit),
@@ -1524,7 +1657,7 @@ function AdminResidualsContent() {
         id: residual.id,
         merchant: accountNames.get(residual.merchant_account_id) ?? rowAccount?.account_name ?? "Unknown account",
         merchantAccountId: residual.merchant_account_id,
-        merchantNotes: residual.merchant_notes ?? "",
+        merchantNotes: residualMeta.cleanNotes,
         month: `${months[residual.residual_month - 1]} ${residual.residual_year}`,
         monthValue: residualMonthValue(residual),
         platform: platformNames.get(platformId) ?? "Unassigned",
@@ -1538,7 +1671,7 @@ function AdminResidualsContent() {
         secondaryAgentId,
         status: residual.residual_status,
         surcharge: amount(residual.surcharge),
-        transactionsPerMonth: amount(residual.transactions_per_month),
+        transactionsPerMonth: transactions,
       };
     }
 
@@ -1566,34 +1699,41 @@ function AdminResidualsContent() {
         if (residual) return rowFromResidual(residual, account);
 
         const agentId = account.assigned_agent_id ?? "";
-        const secondaryAgentId = account.secondary_agent_id ?? null;
+        const agentIds = reportAgentIds(account, agentId);
+        const secondaryAgentId = agentIds.find((id) => id !== agentId) ?? account.secondary_agent_id ?? null;
         const baseline =
           residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, platformId)) ??
           residualBaselinesByAccountPlatform.get(residualBaseKey(account.id, ""));
-        const agentSplit = adminAccountSplitPercent({
+        const agentSplit = reportAgentSplit({
           account,
           fallbackCommission: baseline?.agent_commission_structure || account.commission_structure,
           reportAgent,
           residualType,
         });
         const primaryAgentName = agentNames.get(agentId) ?? "Unassigned";
-        const secondaryAgentName = secondaryAgentId ? agentNames.get(secondaryAgentId) : null;
+        const assignmentNames = agentIds
+          .map((id) => agentNames.get(id))
+          .filter((name): name is string => Boolean(name));
+        const baselineMeta = readResidualMeta(baseline?.merchant_notes);
 
         return {
           agent:
             reportAgent !== "all"
               ? agentNames.get(reportAgent) ?? primaryAgentName
-              : secondaryAgentName
-                ? `${primaryAgentName} + ${secondaryAgentName}`
+              : assignmentNames.length > 1
+                ? assignmentNames.join(" + ")
                 : primaryAgentName,
           agentCommissionStructure:
             baseline?.agent_commission_structure ||
             account.commission_structure ||
+            (residualType === "cc" ? splitLabel(agentSplit) : "") ||
             "Not specified",
           agentId,
+          agentIds,
           agentSplit,
           agentProfit: 0,
           equipmentCost: amount(baseline?.equipment_cost),
+          greenhubCcSplit: baselineMeta.greenhubCcSplit ?? "",
           greenhubNetProfit: 0,
           greenhubPobBuyRate: amount(baseline?.greenhub_pob_buy_rate),
           greenhubPobNetProfit: 0,
@@ -1602,7 +1742,7 @@ function AdminResidualsContent() {
           id: `pending-${account.id}-${selectedReportPeriod.value}`,
           merchant: account.account_name,
           merchantAccountId: account.id,
-          merchantNotes: account.internal_notes ?? "",
+          merchantNotes: readAccountSplitMeta(account.internal_notes, account).cleanNotes,
           month: selectedReportPeriod.label,
           monthValue: selectedReportPeriod.value,
           platform: platformNames.get(platformId) ?? "Unassigned",
@@ -1640,7 +1780,7 @@ function AdminResidualsContent() {
   const reportRows = data ? dedupeMonthlyRows(liveReportRows) : previewReportRows;
   const filteredReportRows = reportRows.filter(
     (row) =>
-      (reportAgent === "all" || row.agentId === reportAgent || row.secondaryAgentId === reportAgent) &&
+      (reportAgent === "all" || row.agentIds.includes(reportAgent)) &&
       (reportMonth === "all" || row.monthValue === reportMonth) &&
       (reportStatus === "all" || row.status === reportStatus)
   );
@@ -2242,7 +2382,14 @@ function AdminResidualsContent() {
         <ResidualReportTable
           rows={paginatedReportRows}
           view={reportView}
+          onTogglePobOverride={(row) => {
+            const key = reportRowEditKey(row);
+            setPobOverrideRowKeys((current) =>
+              current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+            );
+          }}
           pobFieldsLocked={pobFieldsLocked}
+          pobOverrideRowKeys={pobOverrideRowKeys}
           onRemoveRow={(row) => void removeReportRow(row)}
           onSaveRow={(row) => void saveReportRow(row)}
           onUpdateRow={updateReportRow}
@@ -2300,15 +2447,18 @@ function AdminResidualsContent() {
 }
 
 function formFromResidual(residual: MonthlyResidual): ResidualForm {
+  const residualMeta = readResidualMeta(residual.merchant_notes);
+
   return {
     agentCommissionStructure: residual.agent_commission_structure ?? "",
     agentId: residual.agent_id,
     agentProfit: inputValue(residual.agent_profit),
     equipmentCost: inputValue(residual.equipment_cost),
+    greenhubCcSplit: residualMeta.greenhubCcSplit ?? "",
     greenhubPobBuyRate: inputValue(residual.greenhub_pob_buy_rate),
     greenhubPobNetProfit: inputValue(residual.greenhub_pob_net_profit),
     greenhubPobProfitPerTransaction: inputValue(residual.greenhub_pob_profit_per_transaction),
-    merchantNotes: residual.merchant_notes ?? "",
+    merchantNotes: residualMeta.cleanNotes,
     merchantAccountId: residual.merchant_account_id,
     month: months[residual.residual_month - 1] ?? "January",
     monthlySalesVolume: inputValue(residual.monthly_sales_volume),
@@ -2333,6 +2483,7 @@ function formFromReportRow(row: ResidualReportRow): ResidualForm {
     agentId: row.agentId,
     agentProfit: rowInputAmount(row.agentProfit),
     equipmentCost: rowInputAmount(row.equipmentCost),
+    greenhubCcSplit: row.greenhubCcSplit,
     greenhubPobBuyRate: rowInputAmount(row.greenhubPobBuyRate),
     greenhubPobNetProfit: rowInputAmount(row.greenhubPobNetProfit),
     greenhubPobProfitPerTransaction: rowInputAmount(row.greenhubPobProfitPerTransaction),
@@ -2663,7 +2814,12 @@ function ccGrossProfit(row: ResidualReportRow) {
 
 function ccGreenhubNetProfit(row: ResidualReportRow) {
   return row.residualType === "cc"
-    ? splitAmount(row.greenhubNetProfit, greenhubCcSplitPercentForAgentSplit(row.agentSplit))
+    ? splitAmount(
+        row.greenhubNetProfit,
+        row.greenhubCcSplit
+          ? normalizedPercent(row.greenhubCcSplit, greenhubCcSplitPercentForAgentSplit(row.agentSplit))
+          : greenhubCcSplitPercentForAgentSplit(row.agentSplit)
+      )
     : 0;
 }
 
@@ -2737,19 +2893,23 @@ function QuickResidualInput({
 }
 
 function ResidualReportTable({
+  onTogglePobOverride,
   onRemoveRow,
   onSaveRow,
   onUpdateRow,
   pobFieldsLocked,
+  pobOverrideRowKeys,
   rows,
   rowEdits,
   savingRowKey,
   view,
 }: {
+  onTogglePobOverride: (row: ResidualReportRow) => void;
   onRemoveRow: (row: ResidualReportRow) => void;
   onSaveRow: (row: ResidualReportRow) => void;
   onUpdateRow: (row: ResidualReportRow, field: keyof ResidualForm, value: string) => void;
   pobFieldsLocked: boolean;
+  pobOverrideRowKeys: string[];
   rows: ResidualReportRow[];
   rowEdits: Record<string, ResidualForm>;
   savingRowKey: string | null;
@@ -2781,7 +2941,11 @@ function ResidualReportTable({
           <tbody>
             {rows.map((row) => {
               const key = reportRowEditKey(row);
-              const edit = withPobCalculations(rowEdits[key] ?? formFromReportRow(row));
+              const overrideProfitPerTransaction = pobOverrideRowKeys.includes(key);
+              const edit = withPobCalculations(
+                rowEdits[key] ?? formFromReportRow(row),
+                overrideProfitPerTransaction ? "greenhubPobProfitPerTransaction" : undefined
+              );
               const saving = savingRowKey === key;
 
               return (
@@ -2833,8 +2997,9 @@ function ResidualReportTable({
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} GreenHub POB profit per transaction`}
-                      readOnly
+                      readOnly={!overrideProfitPerTransaction}
                       value={edit.greenhubPobProfitPerTransaction}
+                      onValueChange={(value) => onUpdateRow(row, "greenhubPobProfitPerTransaction", value)}
                     />
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -2868,6 +3033,18 @@ function ResidualReportTable({
                   </td>
                   <td className="px-3 py-3 text-right">
                     <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onTogglePobOverride(row)}
+                        className={`rounded-md border px-2 py-1.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                          overrideProfitPerTransaction
+                            ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        Override
+                      </button>
                       <button
                         type="button"
                         disabled={saving}
@@ -2922,7 +3099,7 @@ function ResidualReportTable({
             {rows.map((row) => {
               const key = reportRowEditKey(row);
               const edit = withResidualCalculations(rowEdits[key] ?? formFromReportRow(row), "cc");
-              const greenhubSplit = greenhubCcSplitPercent(edit.agentCommissionStructure);
+              const greenhubSplit = greenhubCcSplitPercentFromForm(edit);
               const greenhubNetProfit = ccGreenhubNetProfitFromForm(edit);
               const saving = savingRowKey === key;
 
@@ -2943,8 +3120,8 @@ function ResidualReportTable({
                   <td className="px-3 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} GreenHub CC split`}
-                      readOnly
-                      value={splitLabel(greenhubSplit)}
+                      value={edit.greenhubCcSplit || splitLabel(greenhubSplit)}
+                      onValueChange={(value) => onUpdateRow(row, "greenhubCcSplit", value)}
                     />
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -3168,9 +3345,11 @@ function demoReportRow(row: DemoResidualRow): ResidualReportRow {
     agent: row.agent,
     agentCommissionStructure: row.agentCommissionStructure,
     agentId: row.agentId,
+    agentIds: [row.agentId],
     agentProfit: amount(row.agentProfit),
     agentSplit: splitPercentFromText(row.agentCommissionStructure, 100),
     equipmentCost: amount(row.equipment),
+    greenhubCcSplit: "",
     greenhubNetProfit: amount(row.netProfit),
     greenhubPobBuyRate: amount(row.greenhubPobBuyRate),
     greenhubPobNetProfit: amount(row.pobNetProfit),
