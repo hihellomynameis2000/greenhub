@@ -72,11 +72,12 @@ function AgentPlatformDetailContent() {
   const params = useParams<{ slug: string }>();
   const { data } = usePortalData();
   const platforms: PlatformRow[] = data ? data.partnerPlatforms : partnerPlatforms;
-  const platform = platforms.find(
-    (item) => item.slug === params.slug || ("id" in item && item.id === params.slug)
+  const platform = useMemo(
+    () => platforms.find((item) => item.slug === params.slug || ("id" in item && item.id === params.slug)),
+    [params.slug, platforms]
   );
   const [activeFolderKey, setActiveFolderKey] = useState("application");
-  const folders = platform?.folders ?? [];
+  const folders = useMemo(() => platform?.folders ?? [], [platform]);
   const folder = useMemo(
     () => folders.find((item) => folderKey(item) === activeFolderKey) ?? folders[0],
     [activeFolderKey, folders]

@@ -36,7 +36,7 @@ type PortalLink = {
 
 const adminLinks: PortalLink[] = [
   { href: "/portal/admin", icon: LayoutDashboard, label: "Overview" },
-  { badge: "Coming soon", href: "/portal/admin/crm", icon: BriefcaseBusiness, label: "CRM" },
+  { href: "/portal/admin/crm", icon: BriefcaseBusiness, label: "CRM" },
   { href: "/portal/admin/platform-library", icon: BookOpen, label: "Platform Library" },
   { href: "/portal/admin/folder-access", icon: FolderLock, label: "Folder Access" },
   { href: "/portal/admin/agents", icon: Users, label: "Agents" },
@@ -46,7 +46,7 @@ const adminLinks: PortalLink[] = [
 
 const agentLinks: PortalLink[] = [
   { href: "/portal/agent", icon: LayoutDashboard, label: "Overview" },
-  { badge: "Coming soon", href: "/portal/agent/crm", icon: BriefcaseBusiness, label: "CRM" },
+  { href: "/portal/agent/crm", icon: BriefcaseBusiness, label: "CRM" },
   { href: "/portal/agent/platforms", icon: BookOpen, label: "Platforms" },
   { href: "/portal/agent/submit-deal", icon: Send, label: "Submit Deal" },
   { href: "/portal/agent/accounts", icon: Building2, label: "Accounts" },

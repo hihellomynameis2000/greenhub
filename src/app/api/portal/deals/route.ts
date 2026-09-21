@@ -143,3 +143,32 @@ export async function PATCH(request: NextRequest) {
     return portalErrorResponse(error);
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const context = await requirePortalContext(request);
+    const id = requiredString(request.nextUrl.searchParams.get("id"), "Deal ID");
+    const existingDeals = await supabaseRest<PortalDeal[]>("portal_deals", {
+      query: new URLSearchParams({ select: "*", id: `eq.${id}`, limit: "1" }),
+    });
+    const existingDeal = existingDeals[0];
+
+    if (!existingDeal) return NextResponse.json({ error: "Deal not found." }, { status: 404 });
+    if (!canEditDeal(context, existingDeal)) {
+      return NextResponse.json({ error: "You do not have permission to remove this deal." }, { status: 403 });
+    }
+
+    await supabaseRest("portal_deals", {
+      method: "DELETE",
+      prefer: "return=minimal",
+      query: new URLSearchParams({ id: `eq.${id}` }),
+    });
+
+    await writeAuditLog(context, "portal_deal.deleted", "portal_deals", id, {
+      merchantName: existingDeal.merchant_name,
+    });
+    return NextResponse.json({ deletedId: id });
+  } catch (error) {
+    return portalErrorResponse(error);
+  }
+}

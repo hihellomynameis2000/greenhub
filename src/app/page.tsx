@@ -680,7 +680,7 @@ export default function EnterpriseMultiStepMerchantFormPreview() {
                 Thank you for your application
               </div>
               <div className="mt-1 text-sm text-slate-600">
-                We're redirecting you to greenhub.io
+                We&apos;re redirecting you to greenhub.io
               </div>
             </div>
           )}
