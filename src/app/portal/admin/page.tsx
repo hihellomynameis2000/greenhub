@@ -24,44 +24,44 @@ const actions: {
 }[] = [
   {
     href: "/portal/admin/crm",
-    title: "CRM Command Center",
-    description: "Review agent pipeline, follow-ups, submitted deals, and approvals.",
-    label: "Agent CRM",
+    title: "CRM",
+    description: "Review pipeline, follow-ups, submitted deals, and approvals.",
+    label: "Pipeline",
     icon: BriefcaseBusiness,
   },
   {
     href: "/portal/admin/platform-library",
     title: "Platform Library",
     description: "Maintain payment platforms, folder structures, files, and program notes.",
-    label: "Partner resources",
+    label: "Resources",
     icon: BookOpen,
   },
   {
     href: "/portal/admin/folder-access",
     title: "Folder Access",
     description: "Restrict or allow platform folders for each agent.",
-    label: "Permissions",
+    label: "Access",
     icon: FolderLock,
   },
   {
     href: "/portal/admin/agents",
-    title: "Manage Agents",
+    title: "Agents",
     description: "Maintain agent access, roles, statuses, and commission notes.",
-    label: "Agent directory",
+    label: "Directory",
     icon: Users,
   },
   {
     href: "/portal/admin/accounts",
     title: "Merchant Accounts",
     description: "Assign merchant accounts to agents and payment platforms.",
-    label: "Account management",
+    label: "Accounts",
     icon: Building2,
   },
   {
     href: "/portal/admin/residuals",
     title: "Monthly Residuals",
     description: "Enter, review, and finalize monthly residual reporting.",
-    label: "Residual reporting",
+    label: "Residuals",
     icon: ReceiptText,
   },
 ];
@@ -102,7 +102,7 @@ function AdminDashboardContent() {
           <div>
           <h2 className="text-lg font-semibold tracking-normal text-slate-950">Operations</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            Open a workspace to maintain the portal reporting data.
+            Jump into the main admin tools.
           </p>
           </div>
         </div>
@@ -121,10 +121,10 @@ function AdminDashboardContent() {
                     <Icon aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
                   </span>
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{action.label}</div>
+                    <div className="text-sm font-medium text-emerald-800">{action.label}</div>
                     <h3 className="mt-1 text-base font-semibold tracking-normal text-slate-950">{action.title}</h3>
                     <p className="mt-1.5 text-sm leading-6 text-slate-600">{action.description}</p>
-                    <p className="mt-3 text-sm font-semibold text-emerald-800">Open workspace</p>
+                    <p className="mt-3 text-sm font-semibold text-emerald-800">Open</p>
                   </div>
                 </div>
               </Link>

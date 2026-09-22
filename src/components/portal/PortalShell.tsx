@@ -34,6 +34,14 @@ type PortalLink = {
   label: string;
 };
 
+type CachedPortalAccess = {
+  email: string;
+  name: string;
+  role: "admin" | "agent";
+};
+
+let cachedPortalAccess: CachedPortalAccess | null = null;
+
 const adminLinks: PortalLink[] = [
   { href: "/portal/admin", icon: LayoutDashboard, label: "Overview" },
   { href: "/portal/admin/crm", icon: BriefcaseBusiness, label: "CRM" },
@@ -83,13 +91,14 @@ export function PortalShell({
   const router = useRouter();
   const links = role === "admin" ? adminLinks : agentLinks;
   const demoUser = role === "admin" ? agents[0] : agents[1];
-  const [checkingAccess, setCheckingAccess] = useState(true);
+  const cachedAccess = cachedPortalAccess?.role === role ? cachedPortalAccess : null;
+  const [checkingAccess, setCheckingAccess] = useState(!cachedAccess);
   const [signingOut, setSigningOut] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [viewer, setViewer] = useState({
-    name: demoUser.name,
-    email: demoUser.email,
+    name: cachedAccess?.name ?? demoUser.name,
+    email: cachedAccess?.email ?? demoUser.email,
   });
 
   useEffect(() => {
@@ -108,6 +117,7 @@ export function PortalShell({
       } = await supabase.auth.getUser();
 
       if (!user?.email) {
+        cachedPortalAccess = null;
         router.replace("/login");
         return;
       }
@@ -121,7 +131,9 @@ export function PortalShell({
           return;
         }
 
-        setViewer({ name: profile.name || nameFromEmail(user.email), email: user.email });
+        const nextViewer = { name: profile.name || nameFromEmail(user.email), email: user.email };
+        cachedPortalAccess = { ...nextViewer, role: profile.role };
+        setViewer(nextViewer);
         setCheckingAccess(false);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
@@ -138,6 +150,7 @@ export function PortalShell({
           }
         }
 
+        cachedPortalAccess = null;
         await supabase.auth.signOut();
         router.replace("/login");
       }
@@ -171,6 +184,7 @@ export function PortalShell({
   async function handleSignOut() {
     setSigningOut(true);
     setMenuOpen(false);
+    cachedPortalAccess = null;
 
     try {
       await fetch("/api/auth/two-factor/session", { method: "DELETE" });
@@ -220,16 +234,12 @@ export function PortalShell({
               <Link
                 key={href}
                 href={href}
-                className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
+                className={`group flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-emerald-50 text-emerald-950"
+                    ? "bg-slate-100 text-slate-950"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                 }`}
               >
-                <span
-                  aria-hidden="true"
-                  className={`h-5 w-0.5 rounded-full ${active ? "bg-emerald-700" : "bg-transparent"}`}
-                />
                 <Icon
                   aria-hidden="true"
                   className={`h-4 w-4 shrink-0 ${active ? "text-emerald-800" : "text-slate-500 group-hover:text-slate-800"}`}
@@ -433,12 +443,12 @@ export function PageHeader({
   subtitle: string;
 }) {
   return (
-    <div className="mb-6 rounded-lg border border-slate-200/80 bg-white px-5 py-4 shadow-sm shadow-slate-200/50">
+    <div className="mb-5 px-1">
       <h1 className="text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
         {title}
       </h1>
 
-      <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p>
+      <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p>
     </div>
   );
 }

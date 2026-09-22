@@ -7,11 +7,14 @@ import {
   CirclePlus,
   Edit3,
   Filter,
+  GripVertical,
+  LayoutGrid,
   Search,
+  Table2,
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { usePortalData } from "@/components/portal/PortalDataProvider";
 import { Card, PageHeader, portalInputClass } from "@/components/portal/PortalShell";
 import { PortalSelect } from "@/components/portal/PortalSelect";
@@ -20,6 +23,7 @@ import { portalRequest } from "@/lib/portal/client";
 import type { NumericValue, PortalDeal, PortalDealStage } from "@/lib/portal/types";
 
 type CrmRole = "admin" | "agent";
+type CrmViewMode = "table" | "board";
 type DealPriority = PortalDeal["priority"];
 
 type DealForm = {
@@ -151,6 +155,9 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
+  const [viewMode, setViewMode] = useState<CrmViewMode>("table");
+  const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
+  const [dropStage, setDropStage] = useState<PortalDealStage | null>(null);
   const [updatingStageId, setUpdatingStageId] = useState<string | null>(null);
 
   const agents = useMemo(
@@ -326,6 +333,33 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
     }
   }
 
+  function handleDealDragStart(event: DragEvent<HTMLElement>, deal: PortalDeal) {
+    setDraggedDealId(deal.id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", deal.id);
+  }
+
+  function handleStageDragOver(event: DragEvent<HTMLDivElement>, stage: PortalDealStage) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dropStage !== stage) setDropStage(stage);
+  }
+
+  function clearDragState() {
+    setDraggedDealId(null);
+    setDropStage(null);
+  }
+
+  function handleStageDrop(event: DragEvent<HTMLDivElement>, stage: PortalDealStage) {
+    event.preventDefault();
+    const dealId = event.dataTransfer.getData("text/plain") || draggedDealId;
+    const deal = filteredDeals.find((item) => item.id === dealId) ?? deals.find((item) => item.id === dealId);
+    clearDragState();
+
+    if (!deal) return;
+    void updateDealStage(deal, stage);
+  }
+
   const title = role === "admin" ? "CRM Command Center" : "Agent CRM";
   const subtitle =
     role === "admin"
@@ -363,14 +397,42 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={openNewForm}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white shadow-sm shadow-emerald-900/20 transition-colors hover:bg-emerald-900"
-          >
-            <CirclePlus aria-hidden="true" className="h-4 w-4" />
-            New Deal
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 shadow-sm shadow-slate-200/40">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-semibold transition-colors ${
+                  viewMode === "table"
+                    ? "bg-white text-slate-950 shadow-sm shadow-slate-200/70"
+                    : "text-slate-600 hover:bg-white/70 hover:text-slate-950"
+                }`}
+              >
+                <Table2 aria-hidden="true" className="h-4 w-4" />
+                Table
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("board")}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-semibold transition-colors ${
+                  viewMode === "board"
+                    ? "bg-white text-slate-950 shadow-sm shadow-slate-200/70"
+                    : "text-slate-600 hover:bg-white/70 hover:text-slate-950"
+                }`}
+              >
+                <LayoutGrid aria-hidden="true" className="h-4 w-4" />
+                Board
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={openNewForm}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white shadow-sm shadow-emerald-900/20 transition-colors hover:bg-emerald-900"
+            >
+              <CirclePlus aria-hidden="true" className="h-4 w-4" />
+              New Deal
+            </button>
+          </div>
         </div>
 
         {formOpen ? (
@@ -596,117 +658,244 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
           })}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-left text-sm text-slate-900">
-            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Merchant</th>
-                {role === "admin" ? <th className="px-3 py-3 font-semibold">Agent</th> : null}
-                <th className="px-3 py-3 font-semibold">Platform</th>
-                <th className="px-3 py-3 font-semibold">Stage</th>
-                <th className="px-3 py-3 font-semibold">Priority</th>
-                <th className="px-3 py-3 font-semibold">Follow-up</th>
-                <th className="px-3 py-3 text-right font-semibold">Volume</th>
-                <th className="px-3 py-3 font-semibold">Updated</th>
-                <th className="px-4 py-3 text-right font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan={role === "admin" ? 9 : 8} className="px-4 py-10 text-center text-sm text-slate-600">
-                    Loading CRM pipeline...
-                  </td>
-                </tr>
-              ) : filteredDeals.length ? (
-                filteredDeals.map((deal) => (
-                  <tr key={deal.id} className="border-t border-slate-200 align-top transition-colors hover:bg-slate-50/80">
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-slate-950">{deal.merchant_name}</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {[deal.contact_name, deal.contact_email].filter(Boolean).join(" - ") || "No contact saved"}
-                      </p>
-                      {deal.notes ? (
-                        <p className="mt-1 line-clamp-2 max-w-sm text-xs leading-5 text-slate-600">{deal.notes}</p>
-                      ) : null}
-                    </td>
-                    {role === "admin" ? (
-                      <td className="px-3 py-3">{agentNames.get(deal.agent_id) ?? "Unassigned"}</td>
-                    ) : null}
-                    <td className="px-3 py-3">{platformNames.get(deal.platform_id ?? "") ?? "-"}</td>
-                    <td className="px-3 py-3">
-                      <PortalSelect
-                        value={deal.stage}
-                        disabled={updatingStageId === deal.id}
-                        onValueChange={(stage) => void updateDealStage(deal, stage)}
-                        options={stages.map((stage) => ({ label: stage.label, value: stage.id }))}
-                      />
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${priorityTone(deal.priority)}`}>
-                        {priorityLabel(deal.priority)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-start gap-2">
-                        <CalendarClock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                        <span>{deal.next_follow_up || "-"}</span>
+        {viewMode === "board" ? (
+          <div className="overflow-x-auto bg-slate-50/70">
+            <div className="grid min-w-[1180px] grid-cols-6 gap-3 p-4">
+              {stages.map((stage) => {
+                const stageDeals = filteredDeals.filter((deal) => deal.stage === stage.id);
+                const stageVolume = stageDeals.reduce((total, deal) => total + numberValue(deal.estimated_volume), 0);
+
+                return (
+                  <section key={stage.id} className="min-w-0">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-semibold text-slate-950">{stage.label}</h3>
+                        <p className="mt-0.5 text-xs font-medium tabular-nums text-slate-500">
+                          {stageDeals.length} deals - {money(stageVolume)}
+                        </p>
                       </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${stageTone(stage.id)}`}>
+                        {stageDeals.length}
+                      </span>
+                    </div>
+                    <div
+                      onDragOver={(event) => handleStageDragOver(event, stage.id)}
+                      onDragLeave={() => setDropStage((current) => (current === stage.id ? null : current))}
+                      onDrop={(event) => handleStageDrop(event, stage.id)}
+                      className={`min-h-[24rem] rounded-lg border border-dashed p-2 transition-colors ${
+                        dropStage === stage.id
+                          ? "border-emerald-400 bg-emerald-50"
+                          : "border-slate-200 bg-white/80"
+                      }`}
+                    >
+                      {isLoading ? (
+                        <div className="flex min-h-[10rem] items-center justify-center rounded-lg bg-white text-sm font-medium text-slate-500">
+                          Loading...
+                        </div>
+                      ) : stageDeals.length ? (
+                        <div className="space-y-2">
+                          {stageDeals.map((deal) => (
+                            <article
+                              key={deal.id}
+                              draggable
+                              onDragStart={(event) => handleDealDragStart(event, deal)}
+                              onDragEnd={clearDragState}
+                              className={`group cursor-grab rounded-lg border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/50 transition active:cursor-grabbing hover:border-slate-300 hover:shadow-md ${
+                                draggedDealId === deal.id ? "opacity-60 ring-2 ring-emerald-200" : ""
+                              }`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <GripVertical
+                                  aria-hidden="true"
+                                  className="mt-0.5 h-4 w-4 shrink-0 text-slate-300 group-hover:text-slate-500"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-950">
+                                    {deal.merchant_name}
+                                  </p>
+                                  <p className="mt-1 truncate text-xs text-slate-500">
+                                    {[deal.contact_name, deal.contact_email].filter(Boolean).join(" - ") ||
+                                      "No contact saved"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-1.5">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${priorityTone(
+                                    deal.priority
+                                  )}`}
+                                >
+                                  {priorityLabel(deal.priority)}
+                                </span>
+                                {role === "admin" ? (
+                                  <span className="max-w-full truncate rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                                    {agentNames.get(deal.agent_id) ?? "Unassigned"}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <dl className="mt-3 grid gap-2 text-xs">
+                                <div className="min-w-0">
+                                  <dt className="font-semibold uppercase text-slate-400">Platform</dt>
+                                  <dd className="mt-0.5 truncate font-medium text-slate-700">
+                                    {platformNames.get(deal.platform_id ?? "") ?? "-"}
+                                  </dd>
+                                </div>
+                                <div className="min-w-0">
+                                  <dt className="font-semibold uppercase text-slate-400">Volume</dt>
+                                  <dd className="mt-0.5 font-semibold tabular-nums text-slate-900">
+                                    {money(numberValue(deal.estimated_volume))}
+                                  </dd>
+                                </div>
+                                {deal.last_activity ? (
+                                  <div className="min-w-0">
+                                    <dt className="font-semibold uppercase text-slate-400">Activity</dt>
+                                    <dd className="mt-0.5 line-clamp-2 leading-5 text-slate-600">{deal.last_activity}</dd>
+                                  </div>
+                                ) : null}
+                              </dl>
+                              <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                                <span className="min-w-0 truncate text-xs font-medium text-slate-500">
+                                  {deal.next_follow_up || "No follow-up"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => editDeal(deal)}
+                                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-200/40 hover:bg-slate-100"
+                                >
+                                  <Edit3 aria-hidden="true" className="h-3.5 w-3.5" />
+                                  Edit
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex min-h-[10rem] items-center justify-center rounded-lg border border-slate-200 bg-slate-50/70 px-3 text-center text-xs font-medium leading-5 text-slate-500">
+                          Drop deals here or change filters.
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] text-left text-sm text-slate-900">
+              <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Merchant</th>
+                  {role === "admin" ? <th className="px-3 py-3 font-semibold">Agent</th> : null}
+                  <th className="px-3 py-3 font-semibold">Platform</th>
+                  <th className="px-3 py-3 font-semibold">Stage</th>
+                  <th className="px-3 py-3 font-semibold">Priority</th>
+                  <th className="px-3 py-3 font-semibold">Follow-up</th>
+                  <th className="px-3 py-3 text-right font-semibold">Volume</th>
+                  <th className="px-3 py-3 font-semibold">Updated</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={role === "admin" ? 9 : 8} className="px-4 py-10 text-center text-sm text-slate-600">
+                      Loading CRM pipeline...
                     </td>
-                    <td className="px-3 py-3 text-right font-semibold tabular-nums">
-                      {money(numberValue(deal.estimated_volume))}
-                    </td>
-                    <td className="px-3 py-3">
-                      <p>{formatDate(deal.updated_at)}</p>
-                      {deal.last_activity ? <p className="mt-1 text-xs text-slate-500">{deal.last_activity}</p> : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
+                  </tr>
+                ) : filteredDeals.length ? (
+                  filteredDeals.map((deal) => (
+                    <tr
+                      key={deal.id}
+                      className="border-t border-slate-200 align-top transition-colors hover:bg-slate-50/80"
+                    >
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-slate-950">{deal.merchant_name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {[deal.contact_name, deal.contact_email].filter(Boolean).join(" - ") || "No contact saved"}
+                        </p>
+                        {deal.notes ? (
+                          <p className="mt-1 line-clamp-2 max-w-sm text-xs leading-5 text-slate-600">{deal.notes}</p>
+                        ) : null}
+                      </td>
+                      {role === "admin" ? (
+                        <td className="px-3 py-3">{agentNames.get(deal.agent_id) ?? "Unassigned"}</td>
+                      ) : null}
+                      <td className="px-3 py-3">{platformNames.get(deal.platform_id ?? "") ?? "-"}</td>
+                      <td className="px-3 py-3">
+                        <PortalSelect
+                          value={deal.stage}
+                          disabled={updatingStageId === deal.id}
+                          onValueChange={(stage) => void updateDealStage(deal, stage)}
+                          options={stages.map((stage) => ({ label: stage.label, value: stage.id }))}
+                        />
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${priorityTone(deal.priority)}`}>
+                          {priorityLabel(deal.priority)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-start gap-2">
+                          <CalendarClock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                          <span>{deal.next_follow_up || "-"}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                        {money(numberValue(deal.estimated_volume))}
+                      </td>
+                      <td className="px-3 py-3">
+                        <p>{formatDate(deal.updated_at)}</p>
+                        {deal.last_activity ? <p className="mt-1 text-xs text-slate-500">{deal.last_activity}</p> : null}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => editDeal(deal)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-200/40 hover:bg-slate-100"
+                          >
+                            <Edit3 aria-hidden="true" className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingId === deal.id}
+                            onClick={() => void deleteDeal(deal)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-200 bg-white px-2.5 text-xs font-semibold text-rose-700 shadow-sm shadow-rose-100/40 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                            {deletingId === deal.id ? "Removing" : "Remove"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={role === "admin" ? 9 : 8} className="px-4 py-12 text-center">
+                      <div className="mx-auto max-w-md">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                          <BriefcaseBusiness aria-hidden="true" className="h-5 w-5" />
+                        </div>
+                        <p className="mt-3 text-sm font-semibold text-slate-950">No CRM deals match this view.</p>
+                        <p className="mt-1 text-sm text-slate-600">Create a deal or clear filters to rebuild the list.</p>
                         <button
                           type="button"
-                          onClick={() => editDeal(deal)}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-200/40 hover:bg-slate-100"
+                          onClick={openNewForm}
+                          className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white shadow-sm shadow-emerald-900/20 hover:bg-emerald-900"
                         >
-                          <Edit3 aria-hidden="true" className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          disabled={deletingId === deal.id}
-                          onClick={() => void deleteDeal(deal)}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-200 bg-white px-2.5 text-xs font-semibold text-rose-700 shadow-sm shadow-rose-100/40 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                          {deletingId === deal.id ? "Removing" : "Remove"}
+                          <CirclePlus aria-hidden="true" className="h-4 w-4" />
+                          New Deal
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={role === "admin" ? 9 : 8} className="px-4 py-12 text-center">
-                    <div className="mx-auto max-w-md">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                        <BriefcaseBusiness aria-hidden="true" className="h-5 w-5" />
-                      </div>
-                      <p className="mt-3 text-sm font-semibold text-slate-950">No CRM deals match this view.</p>
-                      <p className="mt-1 text-sm text-slate-600">Create a deal or clear filters to rebuild the list.</p>
-                      <button
-                        type="button"
-                        onClick={openNewForm}
-                        className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white shadow-sm shadow-emerald-900/20 hover:bg-emerald-900"
-                      >
-                        <CirclePlus aria-hidden="true" className="h-4 w-4" />
-                        New Deal
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </>
   );

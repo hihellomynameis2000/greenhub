@@ -194,18 +194,6 @@ function AdminAgentsContent() {
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-            Commission rate notes
-            <textarea
-              className={portalInputClass}
-              placeholder="Admin-only notes. Example: varies by deal, review account-level terms."
-              rows={3}
-              value={form.commissionNotes}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, commissionNotes: event.target.value }))
-              }
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
             Status
             <PortalSelect
               value={form.status}
@@ -214,6 +202,18 @@ function AdminAgentsContent() {
                 { label: "Active", value: "active" },
                 { label: "Inactive", value: "inactive" },
               ]}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2 xl:col-span-4">
+            Commission rate notes
+            <textarea
+              className={`${portalInputClass} min-h-24 resize-y`}
+              placeholder="Admin-only notes. Example: varies by deal, review account-level terms."
+              rows={3}
+              value={form.commissionNotes}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, commissionNotes: event.target.value }))
+              }
             />
           </label>
         </div>
@@ -360,7 +360,7 @@ function AdminAgentsContent() {
                     {liveAgent && editingId === agent.id ? (
                     <tr className="border-t border-slate-200 bg-slate-50">
                       <td colSpan={6} className="px-5 py-4">
-                        <div className="grid gap-4 lg:grid-cols-5">
+                        <div className="grid gap-4 lg:grid-cols-4">
                           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
                             Full name
                             <input
@@ -396,20 +396,6 @@ function AdminAgentsContent() {
                             />
                           </label>
                           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                            Commission rate notes
-                            <textarea
-                              className={portalInputClass}
-                              rows={2}
-                              value={editForm.commissionNotes}
-                              onChange={(event) =>
-                                setEditForm((current) => ({
-                                  ...current,
-                                  commissionNotes: event.target.value,
-                                }))
-                              }
-                            />
-                          </label>
-                          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
                             Status
                             <PortalSelect
                               value={editForm.status}
@@ -420,6 +406,20 @@ function AdminAgentsContent() {
                                 { label: "Active", value: "active" },
                                 { label: "Inactive", value: "inactive" },
                               ]}
+                            />
+                          </label>
+                          <label className="grid gap-1.5 text-sm font-medium text-slate-700 lg:col-span-4">
+                            Commission rate notes
+                            <textarea
+                              className={`${portalInputClass} min-h-24 resize-y`}
+                              rows={3}
+                              value={editForm.commissionNotes}
+                              onChange={(event) =>
+                                setEditForm((current) => ({
+                                  ...current,
+                                  commissionNotes: event.target.value,
+                                }))
+                              }
                             />
                           </label>
                         </div>
