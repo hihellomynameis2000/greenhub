@@ -2918,24 +2918,41 @@ function ResidualReportTable({
   if (view === "pob") {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1320px] table-fixed text-left text-[11px] text-slate-900">
+        <table className="w-full min-w-[1595px] table-fixed border-separate border-spacing-0 text-left text-[11px] text-slate-900">
+          <colgroup>
+            <col style={{ width: "120px" }} />
+            <col style={{ width: "110px" }} />
+            <col style={{ width: "105px" }} />
+            <col style={{ width: "74px" }} />
+            <col style={{ width: "86px" }} />
+            <col style={{ width: "88px" }} />
+            <col style={{ width: "96px" }} />
+            <col style={{ width: "102px" }} />
+            <col style={{ width: "104px" }} />
+            <col style={{ width: "112px" }} />
+            <col style={{ width: "98px" }} />
+            <col style={{ width: "104px" }} />
+            <col style={{ width: "108px" }} />
+            <col style={{ width: "118px" }} />
+            <col style={{ width: "170px" }} />
+          </colgroup>
           <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
             <tr>
-              <th className="p-4">Merchant</th>
-              <th className="px-3 py-3">Agent</th>
-              <th className="px-3 py-3">Platform</th>
-              <th className="px-3 py-3">Status</th>
-              <th className="px-3 py-3 text-right">POB Buy Rate</th>
-              <th className="px-3 py-3 text-right">Surcharge</th>
-              <th className="px-3 py-3 text-right">Rebate to Merchant</th>
-              <th className="px-3 py-3 text-right">POS Integration Fee</th>
-              <th className="px-3 py-3 text-right">Agent Profit / Transaction</th>
-              <th className="px-3 py-3 text-right">GreenHub POB Profit / Transaction</th>
-              <th className="px-3 py-3 text-right">Transactions</th>
-              <th className="px-3 py-3 text-right">Agent POB Residual</th>
-              <th className="px-3 py-3 text-right">GreenHub POB Net Profit</th>
-              <th className="px-3 py-3">Merchant Notes</th>
-              <th className="px-3 py-3 text-right">Action</th>
+              <th className="px-3 py-3">Merchant</th>
+              <th className="px-2 py-3">Agent</th>
+              <th className="px-2 py-3">Platform</th>
+              <th className="px-2 py-3">Status</th>
+              <th className="px-2 py-3 text-right">POB Buy Rate</th>
+              <th className="px-2 py-3 text-right">Surcharge</th>
+              <th className="px-2 py-3 text-right">Rebate to Merchant</th>
+              <th className="px-2 py-3 text-right">POS Integration Fee</th>
+              <th className="px-2 py-3 text-right">Agent Profit / Transaction</th>
+              <th className="px-2 py-3 text-right">GreenHub POB Profit / Transaction</th>
+              <th className="px-2 py-3 text-right">Transactions</th>
+              <th className="px-2 py-3 text-right">Agent POB Residual</th>
+              <th className="px-2 py-3 text-right">GreenHub POB Net Profit</th>
+              <th className="px-2 py-3">Merchant Notes</th>
+              <th className="sticky right-0 z-20 border-l border-slate-200 bg-slate-100 px-2 py-3 text-right shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.55)]">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -2949,12 +2966,12 @@ function ResidualReportTable({
               const saving = savingRowKey === key;
 
               return (
-                <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
-                  <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
-                  <td className="px-3 py-3">{row.agent}</td>
-                  <td className="px-3 py-3">{row.platform}</td>
-                  <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-                  <td className="px-3 py-3 text-right">
+                <tr key={row.id} className="group border-t border-slate-200 hover:bg-slate-50">
+                  <td className="px-3 py-3 font-semibold text-slate-950">{row.merchant}</td>
+                  <td className="px-2 py-3">{row.agent}</td>
+                  <td className="px-2 py-3">{row.platform}</td>
+                  <td className="px-2 py-3"><ResidualStatus status={row.status} /></td>
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} POB buy rate`}
                       readOnly={pobFieldsLocked}
@@ -2962,7 +2979,7 @@ function ResidualReportTable({
                       onValueChange={(value) => onUpdateRow(row, "greenhubPobBuyRate", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} surcharge`}
                       readOnly={pobFieldsLocked}
@@ -2970,7 +2987,7 @@ function ResidualReportTable({
                       onValueChange={(value) => onUpdateRow(row, "surcharge", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} rebate to merchant`}
                       readOnly={pobFieldsLocked}
@@ -2978,7 +2995,7 @@ function ResidualReportTable({
                       onValueChange={(value) => onUpdateRow(row, "rebate", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} POS integration fee`}
                       readOnly={pobFieldsLocked}
@@ -2986,7 +3003,7 @@ function ResidualReportTable({
                       onValueChange={(value) => onUpdateRow(row, "posIntegrationFee", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} agent profit per transaction`}
                       readOnly={pobFieldsLocked}
@@ -2994,7 +3011,7 @@ function ResidualReportTable({
                       onValueChange={(value) => onUpdateRow(row, "profitPerTransaction", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} GreenHub POB profit per transaction`}
                       readOnly={!overrideProfitPerTransaction}
@@ -3002,28 +3019,28 @@ function ResidualReportTable({
                       onValueChange={(value) => onUpdateRow(row, "greenhubPobProfitPerTransaction", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} transactions`}
                       value={edit.transactionsPerMonth}
                       onValueChange={(value) => onUpdateRow(row, "transactionsPerMonth", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} agent POB residual`}
                       readOnly
                       value={edit.agentProfit}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} GreenHub POB net profit`}
                       readOnly
                       value={edit.greenhubPobNetProfit}
                     />
                   </td>
-                  <td className="max-w-64 px-3 py-3">
+                  <td className="px-2 py-3">
                     <input
                       aria-label={`${row.merchant} merchant notes`}
                       value={edit.merchantNotes}
@@ -3031,13 +3048,13 @@ function ResidualReportTable({
                       className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-1.5 text-[11px] font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
-                    <div className="flex justify-end gap-2">
+                  <td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-2 py-3 text-right shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.55)] group-hover:bg-slate-50">
+                    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                       <button
                         type="button"
                         disabled={saving}
                         onClick={() => onTogglePobOverride(row)}
-                        className={`rounded-md border px-2 py-1.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        className={`h-8 rounded-md border px-1.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                           overrideProfitPerTransaction
                             ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
                             : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -3049,18 +3066,19 @@ function ResidualReportTable({
                         type="button"
                         disabled={saving}
                         onClick={() => onSaveRow(row)}
-                        className="rounded-md bg-emerald-800 px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="h-8 rounded-md bg-emerald-800 px-2 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {saving ? "Saving" : row.hasResidual ? "Save" : "Create"}
                       </button>
                       <button
                         type="button"
+                        aria-label={`Remove ${row.merchant}`}
+                        title={`Remove ${row.merchant}`}
                         disabled={saving || (row.hasResidual && row.status !== "draft")}
                         onClick={() => onRemoveRow(row)}
-                        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                        Remove
                       </button>
                     </div>
                   </td>
@@ -3077,22 +3095,37 @@ function ResidualReportTable({
   if (view === "cc") {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1240px] table-fixed text-left text-[11px] text-slate-900">
+        <table className="w-full min-w-[1360px] table-fixed border-separate border-spacing-0 text-left text-[11px] text-slate-900">
+          <colgroup>
+            <col style={{ width: "140px" }} />
+            <col style={{ width: "108px" }} />
+            <col style={{ width: "112px" }} />
+            <col style={{ width: "74px" }} />
+            <col style={{ width: "104px" }} />
+            <col style={{ width: "104px" }} />
+            <col style={{ width: "112px" }} />
+            <col style={{ width: "104px" }} />
+            <col style={{ width: "112px" }} />
+            <col style={{ width: "104px" }} />
+            <col style={{ width: "98px" }} />
+            <col style={{ width: "140px" }} />
+            <col style={{ width: "108px" }} />
+          </colgroup>
           <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
             <tr>
-              <th className="p-4">Merchant</th>
-              <th className="px-3 py-3">Agent</th>
-              <th className="px-3 py-3">Platform</th>
-              <th className="px-3 py-3">Status</th>
-              <th className="px-3 py-3 text-right">Agent CC Split</th>
-              <th className="px-3 py-3 text-right">GreenHub CC Split</th>
-              <th className="px-3 py-3 text-right">Merchant Sales Volume</th>
-              <th className="px-3 py-3 text-right">Gross Profit</th>
-              <th className="px-3 py-3 text-right">GreenHub Net Profit</th>
-              <th className="px-3 py-3 text-right">Agent Residual</th>
-              <th className="px-3 py-3 text-right">Equipment Cost</th>
-              <th className="px-3 py-3">Merchant Notes</th>
-              <th className="px-3 py-3 text-right">Action</th>
+              <th className="px-3 py-3">Merchant</th>
+              <th className="px-2 py-3">Agent</th>
+              <th className="px-2 py-3">Platform</th>
+              <th className="px-2 py-3">Status</th>
+              <th className="px-2 py-3 text-right">Agent CC Split</th>
+              <th className="px-2 py-3 text-right">GreenHub CC Split</th>
+              <th className="px-2 py-3 text-right">Merchant Sales Volume</th>
+              <th className="px-2 py-3 text-right">Gross Profit</th>
+              <th className="px-2 py-3 text-right">GreenHub Net Profit</th>
+              <th className="px-2 py-3 text-right">Agent Residual</th>
+              <th className="px-2 py-3 text-right">Equipment Cost</th>
+              <th className="px-2 py-3">Merchant Notes</th>
+              <th className="sticky right-0 z-20 border-l border-slate-200 bg-slate-100 px-2 py-3 text-right shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.55)]">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -3104,12 +3137,12 @@ function ResidualReportTable({
               const saving = savingRowKey === key;
 
               return (
-                <tr key={row.id} className="border-t border-slate-200 hover:bg-slate-50">
-                  <td className="p-4 font-semibold text-slate-950">{row.merchant}</td>
-                  <td className="px-3 py-3">{row.agent}</td>
-                  <td className="px-3 py-3">{row.platform}</td>
-                  <td className="px-3 py-3"><ResidualStatus status={row.status} /></td>
-                  <td className="px-3 py-3 text-right">
+                <tr key={row.id} className="group border-t border-slate-200 hover:bg-slate-50">
+                  <td className="px-3 py-3 font-semibold text-slate-950">{row.merchant}</td>
+                  <td className="px-2 py-3">{row.agent}</td>
+                  <td className="px-2 py-3">{row.platform}</td>
+                  <td className="px-2 py-3"><ResidualStatus status={row.status} /></td>
+                  <td className="px-2 py-3 text-right">
                     <input
                       aria-label={`${row.merchant} agent CC split`}
                       value={edit.agentCommissionStructure}
@@ -3117,49 +3150,49 @@ function ResidualReportTable({
                       className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-1.5 text-right text-[11px] font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} GreenHub CC split`}
                       value={edit.greenhubCcSplit || splitLabel(greenhubSplit)}
                       onValueChange={(value) => onUpdateRow(row, "greenhubCcSplit", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} merchant sales volume`}
                       value={edit.monthlySalesVolume}
                       onValueChange={(value) => onUpdateRow(row, "monthlySalesVolume", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} gross profit`}
                       value={edit.netProfit}
                       onValueChange={(value) => onUpdateRow(row, "netProfit", value)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} GreenHub net profit`}
                       readOnly
                       value={inputAmount(greenhubNetProfit)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} agent residual`}
                       readOnly
                       value={edit.agentProfit}
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-2 py-3 text-right">
                     <QuickResidualInput
                       ariaLabel={`${row.merchant} equipment cost`}
                       value={edit.equipmentCost}
                       onValueChange={(value) => onUpdateRow(row, "equipmentCost", value)}
                     />
                   </td>
-                  <td className="max-w-64 px-3 py-3">
+                  <td className="px-2 py-3">
                     <input
                       aria-label={`${row.merchant} merchant notes`}
                       value={edit.merchantNotes}
@@ -3167,24 +3200,25 @@ function ResidualReportTable({
                       className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-1.5 text-[11px] font-medium text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                     />
                   </td>
-                  <td className="px-3 py-3 text-right">
-                    <div className="flex justify-end gap-2">
+                  <td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-2 py-3 text-right shadow-[-12px_0_18px_-18px_rgba(15,23,42,0.55)] group-hover:bg-slate-50">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button
                         type="button"
                         disabled={saving}
                         onClick={() => onSaveRow(row)}
-                        className="rounded-md bg-emerald-800 px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="h-8 rounded-md bg-emerald-800 px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {saving ? "Saving" : row.hasResidual ? "Save" : "Create"}
                       </button>
                       <button
                         type="button"
+                        aria-label={`Remove ${row.merchant}`}
+                        title={`Remove ${row.merchant}`}
                         disabled={saving || (row.hasResidual && row.status !== "draft")}
                         onClick={() => onRemoveRow(row)}
-                        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                        Remove
                       </button>
                     </div>
                   </td>
