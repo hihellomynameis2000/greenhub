@@ -2,7 +2,7 @@ import "server-only";
 
 import { portalOriginForRole } from "./hosts";
 import { PortalApiError } from "./server";
-import type { PortalRole } from "./types";
+import type { NumericValue, PortalRole } from "./types";
 
 type PortalAccessEmail = {
   accessUrl: string;
@@ -19,9 +19,31 @@ type PortalLoginCodeEmail = {
   to: string;
 };
 
+type CrmLeadNotificationEmail = {
+  agentName: string;
+  contactEmail?: string | null;
+  contactName?: string | null;
+  createdByName: string;
+  estimatedVolume?: NumericValue;
+  lastActivity?: string | null;
+  merchantName: string;
+  nextFollowUp?: string | null;
+  notes?: string | null;
+  platformName?: string | null;
+  priority: string;
+  salesforceStatus?: string | null;
+  stageLabel: string;
+  to: string[];
+};
+
 type ResendSuccessResponse = {
   id?: string;
 };
+
+const defaultCrmLeadNotificationRecipients = [
+  "nik@buildrbrand.com",
+  "justin@greenhubinc.com",
+];
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => {
@@ -34,6 +56,39 @@ function escapeHtml(value: string) {
     };
     return entities[character];
   });
+}
+
+function normalizeEmailList(value: string | undefined) {
+  return Array.from(
+    new Set(
+      String(value ?? "")
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+function displayValue(value: NumericValue | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
+function emailRow(label: string, value: NumericValue | string | null | undefined) {
+  return `
+    <tr>
+      <td style="border-bottom:1px solid #e2e8f0;color:#64748b;font-size:13px;font-weight:700;padding:10px 12px;width:180px">${escapeHtml(label)}</td>
+      <td style="border-bottom:1px solid #e2e8f0;color:#0f172a;font-size:14px;padding:10px 12px">${escapeHtml(displayValue(value))}</td>
+    </tr>
+  `;
+}
+
+export function crmLeadNotificationRecipients() {
+  const configured = normalizeEmailList(
+    process.env.CRM_LEAD_NOTIFICATION_EMAILS ?? process.env.ADMIN_CRM_NOTIFICATION_EMAILS
+  );
+
+  return configured.length ? configured : defaultCrmLeadNotificationRecipients;
 }
 
 export function portalAppUrl() {
@@ -187,6 +242,99 @@ export async function sendPortalLoginCodeEmail({
   console.log("Portal verification email accepted by Resend", {
     resendId: delivery.id ?? null,
     role,
+    to,
+  });
+}
+
+export async function sendCrmLeadNotificationEmail({
+  agentName,
+  contactEmail,
+  contactName,
+  createdByName,
+  estimatedVolume,
+  lastActivity,
+  merchantName,
+  nextFollowUp,
+  notes,
+  platformName,
+  priority,
+  salesforceStatus,
+  stageLabel,
+  to,
+}: CrmLeadNotificationEmail) {
+  if (!to.length) return;
+
+  const { apiKey, from } = resendConfig("admin");
+  const subject = `New CRM lead: ${merchantName}`;
+  const rows = [
+    emailRow("Merchant", merchantName),
+    emailRow("Assigned agent", agentName),
+    emailRow("Platform", platformName),
+    emailRow("Stage", stageLabel),
+    emailRow("Priority", priority),
+    emailRow("Estimated volume", estimatedVolume),
+    emailRow("Contact name", contactName),
+    emailRow("Contact email", contactEmail),
+    emailRow("Next follow-up", nextFollowUp),
+    emailRow("Salesforce status", salesforceStatus),
+    emailRow("Last activity", lastActivity),
+    emailRow("Created by", createdByName),
+    emailRow("Notes", notes),
+  ].join("");
+
+  const text = [
+    `New CRM lead: ${merchantName}`,
+    "",
+    `Merchant: ${displayValue(merchantName)}`,
+    `Assigned agent: ${displayValue(agentName)}`,
+    `Platform: ${displayValue(platformName)}`,
+    `Stage: ${displayValue(stageLabel)}`,
+    `Priority: ${displayValue(priority)}`,
+    `Estimated volume: ${displayValue(estimatedVolume)}`,
+    `Contact name: ${displayValue(contactName)}`,
+    `Contact email: ${displayValue(contactEmail)}`,
+    `Next follow-up: ${displayValue(nextFollowUp)}`,
+    `Salesforce status: ${displayValue(salesforceStatus)}`,
+    `Last activity: ${displayValue(lastActivity)}`,
+    `Created by: ${displayValue(createdByName)}`,
+    `Notes: ${displayValue(notes)}`,
+  ].join("\n");
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      html: `
+        <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5;max-width:680px;margin:0 auto;padding:24px">
+          <p style="color:#047857;font-size:13px;font-weight:700;letter-spacing:.08em;margin:0 0 12px;text-transform:uppercase">GreenHub CRM</p>
+          <h1 style="font-size:24px;margin:0 0 8px">New CRM lead added</h1>
+          <p style="color:#475569;margin:0 0 20px">A new CRM lead was created in the GreenHub Partner Portal.</p>
+          <table style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;width:100%">
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `,
+      subject,
+      text,
+      to,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new PortalApiError(
+      `Resend could not deliver the CRM lead notification${body ? `: ${body}` : "."}`,
+      502
+    );
+  }
+
+  const delivery = (await response.json().catch(() => ({}))) as ResendSuccessResponse;
+  console.log("CRM lead notification email accepted by Resend", {
+    resendId: delivery.id ?? null,
     to,
   });
 }

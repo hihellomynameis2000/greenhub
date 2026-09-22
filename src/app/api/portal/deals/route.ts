@@ -9,7 +9,8 @@ import {
   writeAuditLog,
 } from "@/lib/portal/server";
 import { canEditDeal, visibleDealQuery } from "@/lib/portal/partner";
-import type { PortalDeal, PortalDealStage } from "@/lib/portal/types";
+import { crmLeadNotificationRecipients, sendCrmLeadNotificationEmail } from "@/lib/portal/resend";
+import type { AgentProfile, Platform, PortalDeal, PortalDealStage } from "@/lib/portal/types";
 
 function validStage(value: unknown): PortalDealStage {
   if (
@@ -30,6 +31,25 @@ function validPriority(value: unknown): "standard" | "high" | "escalated" {
   return "standard";
 }
 
+function stageLabel(stage: PortalDealStage) {
+  const labels: Record<PortalDealStage, string> = {
+    application_sent: "Application Sent",
+    approved: "Approved",
+    contacted: "Contacted",
+    declined: "Declined",
+    new_lead: "New Lead",
+    submitted: "Submitted",
+  };
+
+  return labels[stage];
+}
+
+function priorityLabel(priority: PortalDeal["priority"]) {
+  if (priority === "escalated") return "Escalated";
+  if (priority === "high") return "High";
+  return "Standard";
+}
+
 function dealPayload(body: Record<string, unknown>, agentId: string, actorId: string) {
   return {
     agent_id: agentId,
@@ -46,6 +66,52 @@ function dealPayload(body: Record<string, unknown>, agentId: string, actorId: st
     stage: validStage(body.stage),
     updated_by: actorId,
   };
+}
+
+async function sendCrmLeadCreatedNotification({
+  createdByName,
+  deal,
+}: {
+  createdByName: string;
+  deal: PortalDeal;
+}) {
+  const [assignedAgents, platforms] = await Promise.all([
+    supabaseRest<Pick<AgentProfile, "id" | "name" | "email">[]>("agent_profiles", {
+      query: new URLSearchParams({
+        id: `eq.${deal.agent_id}`,
+        select: "id,name,email",
+        limit: "1",
+      }),
+    }),
+    deal.platform_id
+      ? supabaseRest<Pick<Platform, "id" | "name">[]>("platforms", {
+          query: new URLSearchParams({
+            id: `eq.${deal.platform_id}`,
+            select: "id,name",
+            limit: "1",
+          }),
+        })
+      : Promise.resolve([]),
+  ]);
+  const assignedAgent = assignedAgents[0];
+  const platform = platforms[0];
+
+  await sendCrmLeadNotificationEmail({
+    agentName: assignedAgent?.name ?? assignedAgent?.email ?? "Unassigned",
+    contactEmail: deal.contact_email,
+    contactName: deal.contact_name,
+    createdByName,
+    estimatedVolume: deal.estimated_volume,
+    lastActivity: deal.last_activity,
+    merchantName: deal.merchant_name,
+    nextFollowUp: deal.next_follow_up,
+    notes: deal.notes,
+    platformName: platform?.name ?? null,
+    priority: priorityLabel(deal.priority),
+    salesforceStatus: deal.salesforce_status,
+    stageLabel: stageLabel(deal.stage),
+    to: crmLeadNotificationRecipients(),
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -85,6 +151,14 @@ export async function POST(request: NextRequest) {
       merchantName: payload.merchant_name,
       stage: payload.stage,
     });
+    try {
+      await sendCrmLeadCreatedNotification({
+        createdByName: context.profile.name || context.profile.email,
+        deal,
+      });
+    } catch (notificationError) {
+      console.error("CRM lead notification email failed", notificationError);
+    }
     return NextResponse.json({ deal }, { status: 201 });
   } catch (error) {
     return portalErrorResponse(error);
