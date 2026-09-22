@@ -859,19 +859,14 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
                       ) : null}
                       <td className="px-3 py-4">{platformNames.get(deal.platform_id ?? "") ?? "-"}</td>
                       <td className="px-3 py-4">
-                        <select
+                        <PortalSelect
                           aria-label={`Stage for ${deal.merchant_name}`}
                           value={deal.stage}
                           disabled={updatingStageId === deal.id}
-                          onChange={(event) => void updateDealStage(deal, event.target.value)}
-                          className="h-9 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm shadow-slate-200/40 outline-none transition-colors focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-                        >
-                          {stages.map((stage) => (
-                            <option key={stage.id} value={stage.id}>
-                              {stage.label}
-                            </option>
-                          ))}
-                        </select>
+                          onValueChange={(stage) => void updateDealStage(deal, stage)}
+                          options={stages.map((stage) => ({ label: stage.label, value: stage.id }))}
+                          className="h-9 min-h-0 py-0 text-sm"
+                        />
                       </td>
                       <td className="px-3 py-4">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${priorityTone(deal.priority)}`}>
