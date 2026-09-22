@@ -106,7 +106,7 @@ export function PortalSelect({
         </span>
         <span
           aria-hidden="true"
-          className="h-2 w-2 shrink-0 -translate-y-0.5 rotate-45 border-b-2 border-r-2 border-slate-500"
+          className="h-2 w-2 shrink-0 -translate-y-0.5 rotate-45 border-b-2 border-r-2 border-slate-400"
         />
       </button>
 
@@ -115,7 +115,7 @@ export function PortalSelect({
           id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
-          className="absolute left-0 top-[calc(100%+0.375rem)] z-40 block max-h-72 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg shadow-slate-200/70"
+          className="absolute left-0 top-[calc(100%+0.375rem)] z-40 block max-h-72 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl shadow-slate-300/40"
         >
           {options.map((option) => {
             const selected = option.value === selectedValue;
@@ -130,7 +130,7 @@ export function PortalSelect({
                 onClick={() => selectOption(option)}
                 className={`block w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
                   selected
-                    ? "bg-slate-100 font-semibold text-slate-950"
+                    ? "bg-emerald-50 font-semibold text-emerald-950"
                     : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
                 } disabled:opacity-50`}
               >

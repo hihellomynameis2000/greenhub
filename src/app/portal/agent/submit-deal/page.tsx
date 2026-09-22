@@ -121,15 +121,15 @@ function AgentSubmitDealContent() {
         subtitle="Prepare a merchant opportunity and continue into the GreenHub application workflow."
       />
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
-        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+        <div className="rounded-lg border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50">
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100">
               <ClipboardList aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
             </span>
             <div>
-              <h2 className="text-lg font-semibold text-slate-950">Deal Intake</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-700">
+              <h2 className="text-lg font-semibold tracking-normal text-slate-950">Deal Intake</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
                 Capture the first pass details, then continue to the full merchant application.
               </p>
             </div>
@@ -224,14 +224,14 @@ function AgentSubmitDealContent() {
               type="button"
               disabled={saving}
               onClick={() => void saveDealDraft()}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-800 px-5 text-sm font-semibold text-white shadow-sm shadow-emerald-900/20 hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
               {saving ? "Saving..." : "Save CRM Draft"}
             </button>
             <Link
               href={applicationHref}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-900 shadow-sm shadow-slate-200/40 hover:bg-slate-100"
             >
               Continue to Full Application
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
@@ -240,15 +240,15 @@ function AgentSubmitDealContent() {
         </div>
 
         <aside className="space-y-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-lg border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50">
             <div className="flex items-center gap-2">
               <Send aria-hidden="true" className="h-5 w-5 text-emerald-700" />
-              <h2 className="text-lg font-semibold text-slate-950">Submission Flow</h2>
+              <h2 className="text-lg font-semibold tracking-normal text-slate-950">Submission Flow</h2>
             </div>
             <div className="mt-4 grid gap-2">
               {intakeSteps.map((step, index) => (
-                <div key={step} className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-slate-700">
+                <div key={step} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
                     {index + 1}
                   </span>
                   <span className="text-sm font-medium text-slate-800">{step}</span>
@@ -257,7 +257,7 @@ function AgentSubmitDealContent() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
             <h2 className="text-sm font-semibold text-emerald-950">Agent Ownership</h2>
             <p className="mt-2 text-sm leading-6 text-emerald-900">
               Saved drafts stay attached to the signed-in agent and appear in the CRM pipeline.

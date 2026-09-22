@@ -122,12 +122,16 @@ export function AdminDashboardOverview() {
 
   return (
     <>
-      <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-6 rounded-lg border border-slate-200/80 bg-white px-5 py-4 shadow-sm shadow-slate-200/50">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950 sm:text-3xl">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+            Operations overview
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
             Admin Dashboard
           </h1>
-          <p className="mt-2 text-sm text-slate-700">
+          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-600">
             Portfolio performance and operational controls for GreenHub.
           </p>
         </div>
@@ -142,6 +146,7 @@ export function AdminDashboardOverview() {
             }))}
             value={period}
           />
+        </div>
         </div>
       </div>
 

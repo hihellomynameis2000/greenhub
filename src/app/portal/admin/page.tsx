@@ -98,11 +98,13 @@ function AdminDashboardContent() {
       <AdminDashboardOverview />
 
       <section className="mt-6">
-        <div className="mb-3">
-          <h2 className="text-lg font-semibold text-slate-950">Operations</h2>
-          <p className="mt-1 text-sm text-slate-700">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+          <h2 className="text-lg font-semibold tracking-normal text-slate-950">Operations</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
             Open a workspace to maintain the portal reporting data.
           </p>
+          </div>
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
           {actions.map((action) => {
@@ -112,17 +114,17 @@ function AdminDashboardContent() {
               <Link
                 key={action.href}
                 href={action.href}
-                className="group rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50"
+                className="group rounded-lg border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50 transition-colors hover:border-emerald-200 hover:bg-emerald-50/70"
               >
                 <div className="flex items-start gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 transition-colors group-hover:bg-white group-hover:text-emerald-800">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200 transition-colors group-hover:bg-white group-hover:text-emerald-800">
                     <Icon aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
                   </span>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-emerald-800">{action.label}</div>
-                    <h3 className="mt-1 text-base font-semibold text-slate-950">{action.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-700">{action.description}</p>
-                    <p className="mt-4 text-sm font-semibold text-emerald-800">Open workspace</p>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{action.label}</div>
+                    <h3 className="mt-1 text-base font-semibold tracking-normal text-slate-950">{action.title}</h3>
+                    <p className="mt-1.5 text-sm leading-6 text-slate-600">{action.description}</p>
+                    <p className="mt-3 text-sm font-semibold text-emerald-800">Open workspace</p>
                   </div>
                 </div>
               </Link>
@@ -131,11 +133,11 @@ function AdminDashboardContent() {
         </div>
       </section>
 
-      <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
+      <section className="mt-6 overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 p-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-950">Recent Merchant Accounts</h2>
-            <p className="mt-1 text-sm text-slate-700">
+            <h2 className="text-lg font-semibold tracking-normal text-slate-950">Recent Merchant Accounts</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
               Portfolio view across agents and processing platforms.
             </p>
           </div>
@@ -146,7 +148,7 @@ function AdminDashboardContent() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[910px] text-left text-sm text-slate-900">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-700">
+            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3 font-semibold">Merchant</th>
                 <th className="px-4 py-3 font-semibold">Platform</th>
@@ -177,7 +179,7 @@ function AdminDashboardContent() {
                     );
 
                     return (
-                      <tr key={account.id} className="border-t border-slate-200 hover:bg-slate-50">
+                      <tr key={account.id} className="border-t border-slate-200 transition-colors hover:bg-slate-50/80">
                         <td className="px-5 py-3.5 font-semibold text-slate-950">{account.account_name}</td>
                         <td className="px-4 py-3.5">
                           {platformNames.get(account.platform_id ?? "") ?? "Unassigned"}
@@ -203,7 +205,7 @@ function AdminDashboardContent() {
                     );
                   })
                 : demoAccounts.map((account) => (
-                    <tr key={account.merchant} className="border-t border-slate-200 hover:bg-slate-50">
+                    <tr key={account.merchant} className="border-t border-slate-200 transition-colors hover:bg-slate-50/80">
                       <td className="px-5 py-3.5 font-semibold text-slate-950">{account.merchant}</td>
                       <td className="px-4 py-3.5">{account.platform}</td>
                       <td className="px-4 py-3.5">{account.agent}</td>

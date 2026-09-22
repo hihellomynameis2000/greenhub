@@ -142,11 +142,11 @@ function AgentDashboardContent() {
       </div>
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-lg border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950">Partner Workspace</h2>
-              <p className="mt-1 text-sm text-slate-700">
+              <h2 className="text-lg font-semibold tracking-normal text-slate-950">Partner Workspace</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
                 Quick access to the areas agents need every day.
               </p>
             </div>
@@ -159,15 +159,15 @@ function AgentDashboardContent() {
                 <Link
                   key={card.href}
                   href={card.href}
-                  className="group rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                  className="group rounded-lg border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/40 transition-colors hover:border-emerald-200 hover:bg-emerald-50/60"
                 >
                   <div className="flex items-start gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-white">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200 group-hover:bg-white group-hover:text-emerald-800">
                       <Icon aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
                     </span>
                     <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-slate-950">{card.title}</h3>
-                      <p className="mt-1 text-sm leading-6 text-slate-700">{card.body}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{card.body}</p>
                       <p className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-emerald-800">
                         Open
                         <ArrowRight aria-hidden="true" className="h-4 w-4" />
@@ -180,33 +180,33 @@ function AgentDashboardContent() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-lg border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950">Program Updates</h2>
-              <p className="mt-1 text-sm text-slate-700">Platform notes and operational changes.</p>
+              <h2 className="text-lg font-semibold tracking-normal text-slate-950">Program Updates</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Platform notes and operational changes.</p>
             </div>
             <Bell aria-hidden="true" className="h-5 w-5 text-slate-500" />
           </div>
           <div className="mt-4 space-y-3">
             {dashboardUpdates.map((update) => (
-              <div key={update.title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div key={update.title} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold text-slate-950">{update.title}</h3>
                   <span className="shrink-0 text-xs text-slate-500">{update.date}</span>
                 </div>
-                <p className="mt-1 text-sm leading-6 text-slate-700">{update.body}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{update.body}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
+      <section className="mt-6 overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 p-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-950">Active Partner Snapshot</h2>
-            <p className="mt-1 text-sm text-slate-700">
+            <h2 className="text-lg font-semibold tracking-normal text-slate-950">Active Partner Snapshot</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
               Pipeline, assigned accounts, and platform access at a glance.
             </p>
           </div>
@@ -235,7 +235,7 @@ function SnapshotTile({
 }) {
   return (
     <div className="flex items-center gap-3 p-5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200">
         <Icon aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
       </span>
       <div>

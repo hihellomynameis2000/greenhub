@@ -196,21 +196,21 @@ export function PortalShell({
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-950">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200 bg-white md:flex">
-        <div className="flex h-16 items-center border-b border-slate-200 px-6">
+    <div className="min-h-screen bg-[#f6f7f9] text-slate-950">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-slate-200/80 bg-white md:flex">
+        <div className="flex h-14 items-center border-b border-slate-200/80 px-4">
           <Image
             src="/images/logo.png"
             alt="GreenHub"
             width={180}
             height={50}
-            className="h-9 w-auto"
+            className="h-8 w-auto"
             priority
           />
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5">
-          <div className="mb-2 px-3 text-xs font-medium text-slate-500">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-4">
+          <div className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             {role === "admin" ? "Partner admin" : "Partner workspace"}
           </div>
           {links.map(({ badge, href, icon: Icon, label }) => {
@@ -220,18 +220,26 @@ export function PortalShell({
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-slate-200 text-slate-950"
-                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                    ? "bg-emerald-50 text-emerald-950"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                 }`}
               >
-                <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span
+                  aria-hidden="true"
+                  className={`h-5 w-0.5 rounded-full ${active ? "bg-emerald-700" : "bg-transparent"}`}
+                />
+                <Icon
+                  aria-hidden="true"
+                  className={`h-4 w-4 shrink-0 ${active ? "text-emerald-800" : "text-slate-500 group-hover:text-slate-800"}`}
+                  strokeWidth={1.9}
+                />
                 <span className="min-w-0 flex-1 truncate">{label}</span>
                 {badge ? (
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      active ? "bg-white/70 text-slate-700" : "bg-slate-100 text-slate-500"
+                      active ? "bg-white text-emerald-800" : "bg-slate-100 text-slate-500"
                     }`}
                   >
                     {badge}
@@ -242,7 +250,7 @@ export function PortalShell({
           })}
         </nav>
 
-        <div className="border-t border-slate-200 px-6 py-4">
+        <div className="border-t border-slate-200/80 px-4 py-3">
           <p className="text-xs leading-5 text-slate-600">
             {role === "admin"
               ? "Partner operations and reporting"
@@ -252,10 +260,10 @@ export function PortalShell({
       </aside>
 
       <PortalDataProvider>
-        <main className="min-h-screen md:pl-64">
-        <div className="fixed left-0 right-0 top-0 z-20 bg-white md:left-64">
-          <header className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <main className="min-h-screen md:pl-56">
+        <div className="fixed left-0 right-0 top-0 z-20 bg-white/95 backdrop-blur md:left-56">
+          <header className="border-b border-slate-200/80 bg-white/95">
+            <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
               <div className="flex min-w-0 items-center gap-3">
                 <Image
                   src="/images/logo.png"
@@ -269,7 +277,7 @@ export function PortalShell({
                   <p className="truncate text-sm font-semibold text-slate-950">
                     GreenHub Partner Portal
                   </p>
-                  <p className="hidden text-xs text-slate-600 sm:block">
+                  <p className="hidden text-xs font-medium text-slate-500 sm:block">
                     {role === "admin" ? "Partner administration" : "Agent workspace"}
                   </p>
                 </div>
@@ -295,7 +303,7 @@ export function PortalShell({
                 {menuOpen ? (
                   <div
                     role="menu"
-                    className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg shadow-slate-300/50"
+                    className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl shadow-slate-300/40"
                   >
                     <div className="border-b border-slate-200 px-4 py-3">
                       <p className="truncate text-sm font-semibold text-slate-950">
@@ -333,7 +341,7 @@ export function PortalShell({
             </div>
           </header>
 
-          <nav className="border-b border-slate-200 bg-white px-4 py-2 md:hidden">
+          <nav className="border-b border-slate-200/80 bg-white px-4 py-2 md:hidden">
             <div className="flex gap-1 overflow-x-auto">
               {links.map(({ href, icon: Icon, label }) => {
                 const active = linkIsActive(href);
@@ -342,9 +350,9 @@ export function PortalShell({
                   <Link
                     key={href}
                     href={href}
-                    className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold ${
+                    className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium ${
                       active
-                        ? "bg-slate-200 text-slate-950"
+                        ? "bg-emerald-50 text-emerald-950"
                         : "text-slate-700 hover:bg-slate-100"
                     }`}
                   >
@@ -357,7 +365,7 @@ export function PortalShell({
           </nav>
         </div>
 
-          <div className="mx-auto max-w-[1600px] px-4 pb-6 pt-[140px] sm:px-6 md:pt-[88px] lg:px-8">
+          <div className="mx-auto max-w-[1600px] px-4 pb-8 pt-[132px] sm:px-6 md:pt-[78px] lg:px-8">
             {children}
           </div>
         </main>
@@ -382,22 +390,22 @@ export function Card({
 
   return (
     <div
-      className={`rounded-lg border p-5 shadow-sm ${
+      className={`rounded-lg border p-4 shadow-sm shadow-slate-200/50 transition-colors ${
         accent
-          ? "border-emerald-900 bg-emerald-900"
-          : "border-slate-200 bg-white"
+          ? "border-emerald-950 bg-emerald-950"
+          : "border-slate-200/80 bg-white"
       }`}
     >
       <div
         className={`text-sm font-semibold ${
-          accent ? "text-emerald-100" : "text-slate-700"
+          accent ? "text-emerald-100" : "text-slate-500"
         }`}
       >
         {title}
       </div>
 
       <div
-        className={`mt-2 text-2xl font-semibold ${
+        className={`mt-2 text-2xl font-semibold tracking-normal ${
           accent ? "text-white" : "text-slate-950"
         }`}
       >
@@ -407,7 +415,7 @@ export function Card({
       {sub ? (
         <div
           className={`mt-1 text-xs ${
-            accent ? "text-emerald-100" : "text-slate-600"
+            accent ? "text-emerald-100" : "text-slate-500"
           }`}
         >
           {sub}
@@ -425,12 +433,12 @@ export function PageHeader({
   subtitle: string;
 }) {
   return (
-    <div className="mb-7">
-      <h1 className="text-2xl font-semibold text-slate-950 sm:text-3xl">
+    <div className="mb-6 rounded-lg border border-slate-200/80 bg-white px-5 py-4 shadow-sm shadow-slate-200/50">
+      <h1 className="text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
         {title}
       </h1>
 
-      <p className="mt-2 text-sm text-slate-700">{subtitle}</p>
+      <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p>
     </div>
   );
 }
