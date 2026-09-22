@@ -158,6 +158,7 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
   const [viewMode, setViewMode] = useState<CrmViewMode>("table");
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [dropStage, setDropStage] = useState<PortalDealStage | null>(null);
+  const [localDeals, setLocalDeals] = useState<PortalDeal[]>([]);
   const [updatingStageId, setUpdatingStageId] = useState<string | null>(null);
 
   const agents = useMemo(
@@ -191,7 +192,11 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
     setForm((current) => ({ ...current, agentId: current.agentId || defaultAgentId }));
   }, [defaultAgentId, editingId]);
 
-  const deals = data?.portalDeals ?? [];
+  useEffect(() => {
+    setLocalDeals(data?.portalDeals ?? []);
+  }, [data?.portalDeals]);
+
+  const deals = localDeals;
   const activeDeals = deals.filter((deal) => !["approved", "declined"].includes(deal.stage));
   const submittedDeals = deals.filter((deal) => deal.stage === "submitted");
   const approvedDeals = deals.filter((deal) => deal.stage === "approved");
@@ -286,23 +291,43 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
 
   async function updateDealStage(deal: PortalDeal, nextStage: string) {
     if (deal.stage === nextStage) return;
+    const nextDealStage = nextStage as PortalDealStage;
+    const nextLastActivity = `Moved to ${stageLabel(nextDealStage)}`;
+
     setUpdatingStageId(deal.id);
+    setLocalDeals((current) =>
+      current.map((item) =>
+        item.id === deal.id
+          ? {
+              ...item,
+              last_activity: nextLastActivity,
+              stage: nextDealStage,
+              updated_at: new Date().toISOString(),
+            }
+          : item
+      )
+    );
 
     try {
-      await portalRequest<{ deal: PortalDeal }>("/api/portal/deals", {
+      const result = await portalRequest<{ deal: PortalDeal }>("/api/portal/deals", {
         method: "PATCH",
         body: JSON.stringify({
           id: deal.id,
-          lastActivity: `Moved to ${stageLabel(nextStage as PortalDealStage)}`,
-          stage: nextStage,
+          lastActivity: nextLastActivity,
+          stage: nextDealStage,
         }),
       });
-      await refresh();
+      setLocalDeals((current) =>
+        current.map((item) => (item.id === deal.id ? result.deal : item))
+      );
       showPortalToast({
         title: "Stage updated",
-        message: `${deal.merchant_name} moved to ${stageLabel(nextStage as PortalDealStage)}.`,
+        message: `${deal.merchant_name} moved to ${stageLabel(nextDealStage)}.`,
       });
     } catch (requestError) {
+      setLocalDeals((current) =>
+        current.map((item) => (item.id === deal.id ? deal : item))
+      );
       showPortalToast({
         title: "Stage update failed",
         message: requestError instanceof Error ? requestError.message : "The deal stage could not be updated.",
