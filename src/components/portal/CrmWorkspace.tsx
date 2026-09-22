@@ -806,9 +806,20 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-sm text-slate-900">
-              <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+          <div className="overflow-x-auto bg-white">
+            <table className="w-full min-w-[1320px] table-fixed text-left text-sm text-slate-900">
+              <colgroup>
+                <col style={{ width: role === "admin" ? "250px" : "310px" }} />
+                {role === "admin" ? <col style={{ width: "135px" }} /> : null}
+                <col style={{ width: "135px" }} />
+                <col style={{ width: "165px" }} />
+                <col style={{ width: "105px" }} />
+                <col style={{ width: "150px" }} />
+                <col style={{ width: "110px" }} />
+                <col style={{ width: "155px" }} />
+                <col style={{ width: "130px" }} />
+              </colgroup>
+              <thead className="border-y border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-600">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Merchant</th>
                   {role === "admin" ? <th className="px-3 py-3 font-semibold">Agent</th> : null}
@@ -832,10 +843,10 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
                   filteredDeals.map((deal) => (
                     <tr
                       key={deal.id}
-                      className="border-t border-slate-200 align-top transition-colors hover:bg-slate-50/80"
+                      className="border-t border-slate-200 align-middle transition-colors hover:bg-slate-50/80"
                     >
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-slate-950">{deal.merchant_name}</p>
+                      <td className="px-4 py-4">
+                        <p className="truncate font-semibold text-slate-950">{deal.merchant_name}</p>
                         <p className="mt-1 text-xs text-slate-500">
                           {[deal.contact_name, deal.contact_email].filter(Boolean).join(" - ") || "No contact saved"}
                         </p>
@@ -844,36 +855,43 @@ export function CrmWorkspace({ role }: { role: CrmRole }) {
                         ) : null}
                       </td>
                       {role === "admin" ? (
-                        <td className="px-3 py-3">{agentNames.get(deal.agent_id) ?? "Unassigned"}</td>
+                        <td className="px-3 py-4">{agentNames.get(deal.agent_id) ?? "Unassigned"}</td>
                       ) : null}
-                      <td className="px-3 py-3">{platformNames.get(deal.platform_id ?? "") ?? "-"}</td>
-                      <td className="px-3 py-3">
-                        <PortalSelect
+                      <td className="px-3 py-4">{platformNames.get(deal.platform_id ?? "") ?? "-"}</td>
+                      <td className="px-3 py-4">
+                        <select
+                          aria-label={`Stage for ${deal.merchant_name}`}
                           value={deal.stage}
                           disabled={updatingStageId === deal.id}
-                          onValueChange={(stage) => void updateDealStage(deal, stage)}
-                          options={stages.map((stage) => ({ label: stage.label, value: stage.id }))}
-                        />
+                          onChange={(event) => void updateDealStage(deal, event.target.value)}
+                          className="h-9 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm shadow-slate-200/40 outline-none transition-colors focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                        >
+                          {stages.map((stage) => (
+                            <option key={stage.id} value={stage.id}>
+                              {stage.label}
+                            </option>
+                          ))}
+                        </select>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-4">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${priorityTone(deal.priority)}`}>
                           {priorityLabel(deal.priority)}
                         </span>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-4">
                         <div className="flex items-start gap-2">
                           <CalendarClock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                           <span>{deal.next_follow_up || "-"}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                      <td className="px-3 py-4 text-right font-semibold tabular-nums">
                         {money(numberValue(deal.estimated_volume))}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-4">
                         <p>{formatDate(deal.updated_at)}</p>
                         {deal.last_activity ? <p className="mt-1 text-xs text-slate-500">{deal.last_activity}</p> : null}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-4">
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
